@@ -1,0 +1,22 @@
+# macOS
+.DS_Store
+
+# Android / Gradle
+.gradle/
+build/
+local.properties
+*.iml
+.idea/
+captures/
+
+# Xcode
+xcuserdata/
+*.xcuserstate
+DerivedData/
+*.xcworkspace/xcuserdata/
+
+# Claude
+.claude/
+
+# SPM
+.build/
