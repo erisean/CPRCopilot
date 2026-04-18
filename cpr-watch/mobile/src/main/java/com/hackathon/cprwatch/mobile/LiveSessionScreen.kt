@@ -2,6 +2,7 @@ package com.hackathon.cprwatch.mobile
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -34,10 +35,11 @@ import androidx.compose.ui.unit.sp
 import com.hackathon.cprwatch.shared.CprDataPoint
 import com.hackathon.cprwatch.shared.CprSession
 
+private val DarkBg = Color(0xFF0D0D0D)
+private val CardBg = Color(0xFF1A1A1A)
 private val Green = Color(0xFF4CAF50)
 private val Red = Color(0xFFF44336)
 private val Orange = Color(0xFFFF9800)
-private val DarkGreen = Color(0xFF1B5E20)
 
 @Composable
 fun LiveSessionScreen(
@@ -59,7 +61,7 @@ fun LiveSessionScreen(
 
     Surface(
         modifier = Modifier.fillMaxSize(),
-        color = Color(0xFF121212)
+        color = DarkBg
     ) {
         Column(
             modifier = Modifier
@@ -74,80 +76,83 @@ fun LiveSessionScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    PulsingDot()
+                    Box(
+                        modifier = Modifier
+                            .width(10.dp)
+                            .height(10.dp)
+                            .background(Green, RoundedCornerShape(5.dp))
+                    )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = "LIVE SESSION",
                         color = Green,
                         fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.titleSmall
+                        fontSize = 14.sp
                     )
                 }
-                if (isSimulating) {
-                    OutlinedButton(
-                        onClick = onStopDebug,
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Red)
-                    ) {
-                        Text("End Session", fontSize = 12.sp)
-                    }
+                OutlinedButton(
+                    onClick = onStopDebug,
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Red),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Red.copy(alpha = 0.5f)),
+                    shape = RoundedCornerShape(20.dp)
+                ) {
+                    Text("End Session", fontSize = 12.sp)
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(32.dp))
 
-            // Hero BPM
+            // Status badge + BPM hero
             HeroBpm(rate = rate, status = status)
 
             Spacer(modifier = Modifier.height(24.dp))
 
             // Rate chart
-            RateChart(
-                dataPoints = dataPoints,
-                modifier = Modifier.fillMaxWidth()
+            Text(
+                text = "Rate Over Time",
+                fontSize = 13.sp,
+                color = Color(0xFF6B6B6B),
+                modifier = Modifier.padding(start = 4.dp)
             )
+            Spacer(modifier = Modifier.height(4.dp))
+            RateChart(dataPoints = dataPoints, modifier = Modifier.fillMaxWidth())
 
             Spacer(modifier = Modifier.height(16.dp))
 
             // Stats grid
-            StatsGrid(dataPoints = dataPoints, session = session)
+            StatsGrid(dataPoints = dataPoints)
 
             Spacer(modifier = Modifier.height(16.dp))
 
             // Guidance bar
             GuidanceBar(feedback = feedback, status = status)
+
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
 
-private enum class RateStatus { WAITING, IN_ZONE, TOO_SLOW, TOO_FAST }
+private enum class RateStatus {
+    WAITING, IN_ZONE, TOO_SLOW, TOO_FAST;
 
-@Composable
-private fun PulsingDot() {
-    Box(
-        modifier = Modifier
-            .width(10.dp)
-            .height(10.dp)
-            .background(Green, RoundedCornerShape(5.dp))
-    )
+    val label: String get() = when (this) {
+        WAITING -> "Waiting"
+        IN_ZONE -> "In Zone"
+        TOO_SLOW -> "Too Slow"
+        TOO_FAST -> "Too Fast"
+    }
+
+    val color: Color get() = when (this) {
+        WAITING -> Color.Gray
+        IN_ZONE -> Green
+        TOO_SLOW -> Orange
+        TOO_FAST -> Red
+    }
 }
 
 @Composable
 private fun HeroBpm(rate: Int, status: RateStatus) {
-    val badgeColor by animateColorAsState(
-        targetValue = when (status) {
-            RateStatus.IN_ZONE -> Green
-            RateStatus.TOO_SLOW -> Orange
-            RateStatus.TOO_FAST -> Red
-            RateStatus.WAITING -> Color.Gray
-        },
-        label = "badge"
-    )
-    val badgeText = when (status) {
-        RateStatus.IN_ZONE -> "In Zone"
-        RateStatus.TOO_SLOW -> "Too Slow"
-        RateStatus.TOO_FAST -> "Too Fast"
-        RateStatus.WAITING -> "Waiting"
-    }
+    val badgeColor by animateColorAsState(targetValue = status.color, label = "badge")
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -156,10 +161,10 @@ private fun HeroBpm(rate: Int, status: RateStatus) {
         Box(
             modifier = Modifier
                 .background(badgeColor.copy(alpha = 0.15f), RoundedCornerShape(20.dp))
-                .padding(horizontal = 16.dp, vertical = 6.dp)
+                .padding(horizontal = 20.dp, vertical = 6.dp)
         ) {
             Text(
-                text = badgeText,
+                text = status.label,
                 color = badgeColor,
                 fontWeight = FontWeight.Bold,
                 fontSize = 14.sp
@@ -179,14 +184,14 @@ private fun HeroBpm(rate: Int, status: RateStatus) {
         Text(
             text = "BPM",
             fontSize = 18.sp,
-            color = Color.Gray,
+            color = Color(0xFF6B6B6B),
             fontWeight = FontWeight.Medium
         )
     }
 }
 
 @Composable
-private fun StatsGrid(dataPoints: List<CprDataPoint>, session: CprSession?) {
+private fun StatsGrid(dataPoints: List<CprDataPoint>) {
     val compressionCount = dataPoints.size
     val inZoneCount = dataPoints.count { it.rate in 100..120 }
     val inZonePct = if (compressionCount > 0) inZoneCount * 100 / compressionCount else 0
@@ -199,16 +204,8 @@ private fun StatsGrid(dataPoints: List<CprDataPoint>, session: CprSession?) {
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        StatCard(
-            label = "Compressions",
-            value = "$compressionCount",
-            modifier = Modifier.weight(1f)
-        )
-        StatCard(
-            label = "Duration",
-            value = formatDuration(durationSec),
-            modifier = Modifier.weight(1f)
-        )
+        StatCard("Compressions", "$compressionCount", modifier = Modifier.weight(1f))
+        StatCard("Duration", formatDuration(durationSec), modifier = Modifier.weight(1f))
     }
 
     Spacer(modifier = Modifier.height(8.dp))
@@ -218,8 +215,8 @@ private fun StatsGrid(dataPoints: List<CprDataPoint>, session: CprSession?) {
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         StatCard(
-            label = "In Zone",
-            value = "$inZonePct%",
+            "In Zone",
+            "$inZonePct%",
             valueColor = when {
                 inZonePct >= 80 -> Green
                 inZonePct >= 50 -> Orange
@@ -228,11 +225,7 @@ private fun StatsGrid(dataPoints: List<CprDataPoint>, session: CprSession?) {
             },
             modifier = Modifier.weight(1f)
         )
-        StatCard(
-            label = "Avg Rate",
-            value = if (avgRate > 0) "$avgRate" else "--",
-            modifier = Modifier.weight(1f)
-        )
+        StatCard("Avg Rate", if (avgRate > 0) "$avgRate" else "--", modifier = Modifier.weight(1f))
     }
 }
 
@@ -246,59 +239,38 @@ private fun StatCard(
     Card(
         modifier = modifier,
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E))
+        colors = CardDefaults.cardColors(containerColor = CardBg)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.bodySmall,
-                color = Color.Gray
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = value,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold,
-                color = valueColor
-            )
+            Text(text = label, fontSize = 11.sp, color = Color(0xFF6B6B6B), letterSpacing = 0.3.sp)
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(text = value, fontSize = 28.sp, fontWeight = FontWeight.Bold, color = valueColor)
         }
     }
 }
 
 @Composable
 private fun GuidanceBar(feedback: String, status: RateStatus) {
-    val bgColor = when (status) {
-        RateStatus.IN_ZONE -> Green.copy(alpha = 0.15f)
-        RateStatus.TOO_SLOW -> Orange.copy(alpha = 0.15f)
-        RateStatus.TOO_FAST -> Red.copy(alpha = 0.15f)
-        RateStatus.WAITING -> Color.Gray.copy(alpha = 0.15f)
-    }
-    val textColor = when (status) {
-        RateStatus.IN_ZONE -> Green
-        RateStatus.TOO_SLOW -> Orange
-        RateStatus.TOO_FAST -> Red
-        RateStatus.WAITING -> Color.Gray
-    }
-
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(bgColor, RoundedCornerShape(12.dp))
-            .padding(16.dp),
+            .background(status.color.copy(alpha = 0.12f), RoundedCornerShape(12.dp))
+            .padding(vertical = 16.dp),
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
                 text = "CURRENT GUIDANCE",
-                style = MaterialTheme.typography.labelSmall,
-                color = Color.Gray
+                fontSize = 10.sp,
+                color = Color(0xFF6B6B6B),
+                letterSpacing = 1.sp
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = feedback.ifEmpty { "Waiting for compressions..." },
-                fontSize = 18.sp,
+                fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
-                color = textColor,
+                color = status.color,
                 textAlign = TextAlign.Center
             )
         }

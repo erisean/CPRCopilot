@@ -30,40 +30,47 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
         if (sessionActive) return
         sessionActive = true
 
-        detector.start()
+        detector.start(viewModelScope)
         haptic.startMetronome(viewModelScope)
 
         viewModelScope.launch {
             try { dataSender.sendSessionStart() } catch (_: Exception) {}
         }
 
+        // Listen for compression events (Layer 2) and send to phone
+        detector.compressionEvents
+            .onEach { event ->
+                viewModelScope.launch {
+                    try { dataSender.sendCompressionEvent(event) } catch (_: Exception) {}
+                }
+
+                // Also send legacy CprDataPoint for phone UI compatibility
+                viewModelScope.launch {
+                    try {
+                        dataSender.sendDataPoint(
+                            CprDataPoint(
+                                timestampMs = event.timestampMs,
+                                rate = event.rollingRateBpm.toInt(),
+                                depthCm = event.estimatedDepthMm / 10f,
+                                feedback = instructionToFeedback(event.instruction)
+                            )
+                        )
+                    } catch (_: Exception) {}
+                }
+            }
+            .launchIn(viewModelScope)
+
+        // Listen for metrics (derived from Layer 2) for watch UI
         detector.metrics
             .onEach { metrics ->
-                val message = feedbackMessage(metrics)
-
                 _uiState.value = CprUiState(
                     isActive = true,
                     rate = metrics.rate,
                     depthCm = metrics.depthCm,
                     isCompressing = metrics.isCompressing,
                     feedback = metrics.feedback,
-                    feedbackMessage = message
+                    feedbackMessage = metrics.feedback.message
                 )
-
-                if (metrics.isCompressing && metrics.rate > 0) {
-                    viewModelScope.launch {
-                        try {
-                            dataSender.sendDataPoint(
-                                CprDataPoint(
-                                    timestampMs = System.currentTimeMillis(),
-                                    rate = metrics.rate,
-                                    depthCm = metrics.depthCm,
-                                    feedback = message
-                                )
-                            )
-                        } catch (_: Exception) {}
-                    }
-                }
 
                 if (metrics.feedback != CompressionFeedback.GOOD &&
                     metrics.feedback != CompressionFeedback.IDLE &&
@@ -86,14 +93,19 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun feedbackMessage(metrics: CompressionMetrics): String {
-        return when (metrics.feedback) {
-            CompressionFeedback.IDLE -> "Tap to start"
-            CompressionFeedback.GOOD -> "Good compressions!"
-            CompressionFeedback.TOO_SLOW -> "Push faster"
-            CompressionFeedback.TOO_FAST -> "Slow down"
-            CompressionFeedback.TOO_SHALLOW -> "Push harder"
-            CompressionFeedback.TOO_DEEP -> "Ease up"
+    private fun instructionToFeedback(instruction: String): String {
+        return when (instruction) {
+            "none" -> "Good compressions!"
+            "faster" -> "Push faster"
+            "slower" -> "Slow down"
+            "push_harder" -> "Push harder"
+            "ease_up" -> "Ease up"
+            "let_chest_up" -> "Let chest recoil"
+            "resume_compressions" -> "Resume compressions!"
+            "switch_rescuers" -> "Switch rescuers"
+            "consider_switching" -> "Consider switching"
+            "stay_strong" -> "Stay strong!"
+            else -> "Good compressions!"
         }
     }
 
