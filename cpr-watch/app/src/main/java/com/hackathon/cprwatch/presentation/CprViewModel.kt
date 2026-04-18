@@ -26,9 +26,18 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
 
     private var sessionActive = false
 
+    init {
+        observeDetector()
+    }
+
     fun startSession() {
         if (sessionActive) return
         sessionActive = true
+
+        _uiState.value = _uiState.value.copy(
+            isActive = true,
+            feedbackMessage = "Start compressions"
+        )
 
         detector.start()
         haptic.startMetronome(viewModelScope)
@@ -37,18 +46,34 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
             try { dataSender.sendSessionStart() } catch (_: Exception) {}
         }
 
+    }
+
+    fun stopSession() {
+        sessionActive = false
+        detector.stop()
+        haptic.stopMetronome()
+        _uiState.value = CprUiState()
+
+        viewModelScope.launch {
+            try { dataSender.sendSessionStop() } catch (_: Exception) {}
+        }
+    }
+
+    private fun observeDetector() {
         detector.metrics
             .onEach { metrics ->
                 val message = feedbackMessage(metrics)
 
-                _uiState.value = CprUiState(
-                    isActive = true,
+                _uiState.value = _uiState.value.copy(
+                    isActive = sessionActive,
                     rate = metrics.rate,
                     depthCm = metrics.depthCm,
                     isCompressing = metrics.isCompressing,
                     feedback = metrics.feedback,
-                    feedbackMessage = message
+                    feedbackMessage = if (sessionActive) message else "Tap to start"
                 )
+
+                if (!sessionActive) return@onEach
 
                 if (metrics.isCompressing && metrics.rate > 0) {
                     viewModelScope.launch {
@@ -73,17 +98,18 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
             .launchIn(viewModelScope)
-    }
 
-    fun stopSession() {
-        sessionActive = false
-        detector.stop()
-        haptic.stopMetronome()
-        _uiState.value = CprUiState()
-
-        viewModelScope.launch {
-            try { dataSender.sendSessionStop() } catch (_: Exception) {}
-        }
+        detector.liveSample
+            .onEach { sample ->
+                _uiState.value = _uiState.value.copy(
+                    accelX = sample.x,
+                    accelY = sample.y,
+                    accelZ = sample.z,
+                    accelMagnitude = sample.magnitude,
+                    accelTimestampMs = sample.timestampMs
+                )
+            }
+            .launchIn(viewModelScope)
     }
 
     private fun feedbackMessage(metrics: CompressionMetrics): String {
@@ -109,5 +135,10 @@ data class CprUiState(
     val depthCm: Float = 0f,
     val isCompressing: Boolean = false,
     val feedback: CompressionFeedback = CompressionFeedback.IDLE,
-    val feedbackMessage: String = "Tap to start"
+    val feedbackMessage: String = "Tap to start",
+    val accelX: Float = 0f,
+    val accelY: Float = 0f,
+    val accelZ: Float = 0f,
+    val accelMagnitude: Float = 0f,
+    val accelTimestampMs: Long = 0L
 )

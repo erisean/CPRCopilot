@@ -5,11 +5,8 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
-import kotlinx.coroutines.channels.awaitClose
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.callbackFlow
 import kotlin.math.abs
 import kotlin.math.sqrt
 
@@ -18,6 +15,14 @@ data class CompressionMetrics(
     val depthCm: Float = 0f,
     val isCompressing: Boolean = false,
     val feedback: CompressionFeedback = CompressionFeedback.IDLE
+)
+
+data class AccelerometerSample(
+    val x: Float = 0f,
+    val y: Float = 0f,
+    val z: Float = 0f,
+    val magnitude: Float = 0f,
+    val timestampMs: Long = 0L
 )
 
 enum class CompressionFeedback {
@@ -36,6 +41,9 @@ class CompressionDetector(context: Context) : SensorEventListener {
 
     private val _metrics = MutableStateFlow(CompressionMetrics())
     val metrics: StateFlow<CompressionMetrics> = _metrics
+
+    private val _liveSample = MutableStateFlow(AccelerometerSample())
+    val liveSample: StateFlow<AccelerometerSample> = _liveSample
 
     // Peak detection state
     private val compressionTimestamps = mutableListOf<Long>()
@@ -82,6 +90,7 @@ class CompressionDetector(context: Context) : SensorEventListener {
         isInCompression = false
         lastTimestamp = 0L
         _metrics.value = CompressionMetrics()
+        _liveSample.value = AccelerometerSample()
     }
 
     override fun onSensorChanged(event: SensorEvent) {
@@ -104,6 +113,14 @@ class CompressionDetector(context: Context) : SensorEventListener {
         val ay = event.values[1]
         val az = event.values[2]
         val accelMagnitude = sqrt(ax * ax + ay * ay + az * az)
+
+        _liveSample.value = AccelerometerSample(
+            x = ax,
+            y = ay,
+            z = az,
+            magnitude = accelMagnitude,
+            timestampMs = now / 1_000_000
+        )
 
         // Integrate acceleration to get velocity, then displacement
         velocity += accelMagnitude * dt

@@ -4,7 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -22,7 +21,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.ButtonDefaults
-import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
 import com.hackathon.cprwatch.sensor.CompressionFeedback
 
@@ -123,6 +121,28 @@ private fun ActiveScreen(state: CprUiState, onStop: () -> Unit) {
             fontSize = 14.sp,
             fontWeight = FontWeight.Bold,
             color = feedbackColor,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Text(
+            text = "Accel (m/s^2)",
+            fontSize = 10.sp,
+            color = Color.Gray
+        )
+        Text(
+            text = "x ${"%.2f".format(state.accelX)}  y ${"%.2f".format(state.accelY)}",
+            fontSize = 10.sp,
+            color = Color.White,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Text(
+            text = "z ${"%.2f".format(state.accelZ)}  |a| ${"%.2f".format(state.accelMagnitude)}",
+            fontSize = 10.sp,
+            color = Color.White,
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth()
         )
