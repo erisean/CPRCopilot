@@ -92,6 +92,7 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
 
                 if (metrics.feedback != CompressionFeedback.GOOD &&
                     metrics.feedback != CompressionFeedback.IDLE &&
+                    metrics.feedback != CompressionFeedback.CALIBRATING &&
                     metrics.isCompressing
                 ) {
                     haptic.pulseWarning()
@@ -115,6 +116,7 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
     private fun feedbackMessage(metrics: CompressionMetrics): String {
         return when (metrics.feedback) {
             CompressionFeedback.IDLE -> "Tap to start"
+            CompressionFeedback.CALIBRATING -> "Calibrating…"
             CompressionFeedback.GOOD -> "Good compressions!"
             CompressionFeedback.TOO_SLOW -> "Push faster"
             CompressionFeedback.TOO_FAST -> "Slow down"

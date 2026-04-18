@@ -27,6 +27,7 @@ data class AccelerometerSample(
 
 enum class CompressionFeedback {
     IDLE,
+    CALIBRATING,
     GOOD,
     TOO_SLOW,
     TOO_FAST,
@@ -37,7 +38,7 @@ enum class CompressionFeedback {
 class CompressionDetector(context: Context) : SensorEventListener {
 
     private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
-    private val accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION)
+    private val accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
 
     private val _metrics = MutableStateFlow(CompressionMetrics())
     val metrics: StateFlow<CompressionMetrics> = _metrics
@@ -53,12 +54,20 @@ class CompressionDetector(context: Context) : SensorEventListener {
     private var peakDisplacement = 0f
     private var isInCompression = false
     private var lastTimestamp = 0L
+    private var gravityInitialized = false
+    private var gravityX = 0f
+    private var gravityY = 0f
+    private var gravityZ = 0f
+    private var calibrationStartMs = 0L
+    private var isCalibrating = true
 
     // Thresholds
     private val peakAccelThreshold = 3.0f // m/s² to detect a compression push
     private val minCompressionIntervalMs = 300L // max ~200 bpm
     private val maxCompressionIntervalMs = 1200L // min ~50 bpm
     private val idleTimeoutMs = 3000L
+    private val gravityTimeConstantSec = 0.25f
+    private val calibrationDurationMs = 500L
 
     // AHA guidelines
     private val targetRateMin = 100
@@ -89,12 +98,18 @@ class CompressionDetector(context: Context) : SensorEventListener {
         peakDisplacement = 0f
         isInCompression = false
         lastTimestamp = 0L
+        gravityInitialized = false
+        gravityX = 0f
+        gravityY = 0f
+        gravityZ = 0f
+        calibrationStartMs = 0L
+        isCalibrating = true
         _metrics.value = CompressionMetrics()
         _liveSample.value = AccelerometerSample()
     }
 
     override fun onSensorChanged(event: SensorEvent) {
-        if (event.sensor.type != Sensor.TYPE_LINEAR_ACCELERATION) return
+        if (event.sensor.type != Sensor.TYPE_ACCELEROMETER) return
 
         val now = event.timestamp // nanoseconds
         if (lastTimestamp == 0L) {
@@ -107,11 +122,38 @@ class CompressionDetector(context: Context) : SensorEventListener {
 
         if (dt <= 0 || dt > 0.1f) return
 
-        // Use the magnitude of acceleration as a proxy for vertical force
-        // In practice the watch orientation varies, so magnitude is more robust
-        val ax = event.values[0]
-        val ay = event.values[1]
-        val az = event.values[2]
+        val rawX = event.values[0]
+        val rawY = event.values[1]
+        val rawZ = event.values[2]
+
+        if (!gravityInitialized) {
+            gravityX = rawX
+            gravityY = rawY
+            gravityZ = rawZ
+            gravityInitialized = true
+            calibrationStartMs = now / 1_000_000
+        }
+
+        // Low-pass gravity estimate, then subtract it to get linear acceleration.
+        val alpha = gravityTimeConstantSec / (gravityTimeConstantSec + dt)
+        gravityX = alpha * gravityX + (1 - alpha) * rawX
+        gravityY = alpha * gravityY + (1 - alpha) * rawY
+        gravityZ = alpha * gravityZ + (1 - alpha) * rawZ
+
+        val currentTimeMs = now / 1_000_000
+
+        // During calibration, keep updating gravity but suppress detection and live output
+        if (isCalibrating) {
+            if (currentTimeMs - calibrationStartMs < calibrationDurationMs) {
+                _metrics.value = CompressionMetrics(feedback = CompressionFeedback.CALIBRATING)
+                return
+            }
+            isCalibrating = false
+        }
+
+        val ax = rawX - gravityX
+        val ay = rawY - gravityY
+        val az = rawZ - gravityZ
         val accelMagnitude = sqrt(ax * ax + ay * ay + az * az)
 
         _liveSample.value = AccelerometerSample(
@@ -126,7 +168,6 @@ class CompressionDetector(context: Context) : SensorEventListener {
         velocity += accelMagnitude * dt
         displacement += velocity * dt
 
-        val currentTimeMs = now / 1_000_000
 
         if (accelMagnitude > peakAccelThreshold && !isInCompression) {
             val timeSinceLastPeak = currentTimeMs - lastPeakTime

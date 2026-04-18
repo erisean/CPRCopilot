@@ -81,6 +81,7 @@ private fun ActiveScreen(state: CprUiState, onStop: () -> Unit) {
     val feedbackColor = when (state.feedback) {
         CompressionFeedback.GOOD -> Color.Green
         CompressionFeedback.IDLE -> Color.Gray
+        CompressionFeedback.CALIBRATING -> Color.Cyan
         else -> Color.Yellow
     }
 
