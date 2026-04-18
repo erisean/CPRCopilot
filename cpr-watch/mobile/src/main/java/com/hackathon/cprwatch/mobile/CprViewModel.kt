@@ -2,7 +2,7 @@ package com.hackathon.cprwatch.mobile
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.hackathon.cprwatch.shared.CprDataPoint
+import com.hackathon.cprwatch.shared.CompressionEvent
 import com.hackathon.cprwatch.shared.CprSession
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -23,8 +23,9 @@ data class MobileUiState(
     val currentSession: CprSession? = null,
     val completedSession: CprSession? = null,
     val pastSessions: List<CprSession> = emptyList(),
-    val latestDataPoint: CprDataPoint? = null,
-    val isSimulating: Boolean = false
+    val latestEvent: CompressionEvent? = null,
+    val isSimulating: Boolean = false,
+    val isListening: Boolean = false
 )
 
 class CprViewModel : ViewModel() {
@@ -36,8 +37,9 @@ class CprViewModel : ViewModel() {
         CprRepository.currentSession,
         CprRepository.pastSessions,
         CprRepository.simulating,
+        CprRepository.listening,
         _completedSession
-    ) { current, past, simulating, completed ->
+    ) { current, past, simulating, listening, completed ->
         val screen = when {
             current != null -> ScreenState.LIVE
             completed != null -> ScreenState.SCORECARD
@@ -48,10 +50,26 @@ class CprViewModel : ViewModel() {
             currentSession = current,
             completedSession = completed,
             pastSessions = past,
-            latestDataPoint = current?.dataPoints?.lastOrNull(),
-            isSimulating = simulating
+            latestEvent = current?.compressionEvents?.lastOrNull(),
+            isSimulating = simulating,
+            isListening = listening
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), MobileUiState())
+
+    fun startSession() {
+        _completedSession.value = null
+        CprRepository.startListening()
+        CprRepository.startSession()
+    }
+
+    fun stopSession() {
+        _completedSession.value = CprRepository.currentSession.value
+        CprRepository.endSession()
+        CprRepository.stopListening()
+        CprRepository.setSimulating(false)
+        simulationJob?.cancel()
+        simulationJob = null
+    }
 
     fun dismissScorecard() {
         _completedSession.value = null
@@ -61,46 +79,59 @@ class CprViewModel : ViewModel() {
         if (simulationJob?.isActive == true) return
         _completedSession.value = null
         CprRepository.setSimulating(true)
+        CprRepository.startListening()
         CprRepository.startSession()
 
         simulationJob = viewModelScope.launch {
             var count = 0
+            var lastMs = System.currentTimeMillis()
             while (isActive) {
                 count++
+                val now = System.currentTimeMillis()
                 val phase = count / 30.0
                 val rateDrift = (sin(phase) * 15).toInt()
-                val depthDrift = (sin(phase * 0.7) * 1.2).toFloat()
+                val depthDrift = (sin(phase * 0.7) * 12).toFloat()
 
+                val intervalMs = (545 + Random.nextInt(-20, 21))
                 val rate = (110 + rateDrift + Random.nextInt(-3, 4)).coerceIn(80, 140)
-                val depth = (5.5f + depthDrift + Random.nextFloat() * 0.4f - 0.2f).coerceIn(2f, 8f)
+                val depthMm = (55f + depthDrift + Random.nextFloat() * 4f - 2f).coerceIn(20f, 80f)
+                val recoilPct = (97f + Random.nextFloat() * 4f - 2f).coerceIn(80f, 100f)
 
-                val feedback = when {
-                    rate < 100 -> "Push faster"
-                    rate > 120 -> "Slow down"
-                    depth < 5.0f -> "Push harder"
-                    depth > 6.0f -> "Ease up"
-                    else -> "Good compressions!"
+                val instruction = when {
+                    rate < 100 -> "faster"
+                    rate > 120 -> "slower"
+                    depthMm < 50 -> "push_harder"
+                    depthMm > 60 -> "ease_up"
+                    else -> "none"
                 }
 
-                CprRepository.addDataPoint(
-                    CprDataPoint(
-                        timestampMs = System.currentTimeMillis(),
-                        rate = rate,
-                        depthCm = depth,
-                        feedback = feedback
+                CprRepository.addCompressionEvent(
+                    CompressionEvent(
+                        compressionIdx = count,
+                        timestampMs = now,
+                        intervalMs = intervalMs,
+                        instantaneousRateBpm = 60000f / intervalMs,
+                        rollingRateBpm = rate.toFloat(),
+                        estimatedDepthMm = depthMm,
+                        recoilPct = recoilPct,
+                        dutyCycle = 0.5f,
+                        peakAccelMps2 = (7f + Random.nextFloat() * 3f),
+                        wristAngleDeg = Random.nextFloat() * 10f,
+                        rescuerHrBpm = if (count % 10 == 0) (90 + count / 5).coerceAtMost(160) else null,
+                        isQualityGood = instruction == "none",
+                        instruction = instruction,
+                        instructionPriority = when (instruction) {
+                            "none" -> null
+                            "faster", "slower" -> 2
+                            "push_harder", "ease_up" -> 3
+                            else -> null
+                        }
                     )
                 )
 
-                delay(545)
+                lastMs = now
+                delay(intervalMs.toLong())
             }
         }
-    }
-
-    fun stopSimulation() {
-        simulationJob?.cancel()
-        simulationJob = null
-        _completedSession.value = CprRepository.currentSession.value
-        CprRepository.endSession()
-        CprRepository.setSimulating(false)
     }
 }

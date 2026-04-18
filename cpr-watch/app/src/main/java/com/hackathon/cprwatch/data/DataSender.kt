@@ -2,7 +2,9 @@ package com.hackathon.cprwatch.data
 
 import android.content.Context
 import com.google.android.gms.wearable.Wearable
+import com.hackathon.cprwatch.shared.CompressionEvent
 import com.hackathon.cprwatch.shared.CprDataPoint
+import com.hackathon.cprwatch.shared.MessagePaths
 import kotlinx.coroutines.tasks.await
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -12,37 +14,28 @@ class DataSender(context: Context) {
     private val messageClient = Wearable.getMessageClient(context)
     private val nodeClient = Wearable.getNodeClient(context)
 
+    suspend fun sendCompressionEvent(event: CompressionEvent) {
+        val json = Json.encodeToString(event)
+        sendToAll(MessagePaths.COMPRESSION_EVENT, json.toByteArray())
+    }
+
     suspend fun sendDataPoint(dataPoint: CprDataPoint) {
         val json = Json.encodeToString(dataPoint)
-        val nodes = nodeClient.connectedNodes.await()
-        for (node in nodes) {
-            messageClient.sendMessage(
-                node.id,
-                CprDataPoint.MESSAGE_PATH,
-                json.toByteArray()
-            ).await()
-        }
+        sendToAll(MessagePaths.DATA_POINT, json.toByteArray())
     }
 
     suspend fun sendSessionStart() {
-        val nodes = nodeClient.connectedNodes.await()
-        for (node in nodes) {
-            messageClient.sendMessage(
-                node.id,
-                CprDataPoint.SESSION_START_PATH,
-                byteArrayOf()
-            ).await()
-        }
+        sendToAll(MessagePaths.SESSION_START, byteArrayOf())
     }
 
     suspend fun sendSessionStop() {
+        sendToAll(MessagePaths.SESSION_STOP, byteArrayOf())
+    }
+
+    private suspend fun sendToAll(path: String, data: ByteArray) {
         val nodes = nodeClient.connectedNodes.await()
         for (node in nodes) {
-            messageClient.sendMessage(
-                node.id,
-                CprDataPoint.SESSION_STOP_PATH,
-                byteArrayOf()
-            ).await()
+            messageClient.sendMessage(node.id, path, data).await()
         }
     }
 }

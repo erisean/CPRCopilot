@@ -20,13 +20,13 @@ class MainActivity : ComponentActivity() {
                 when (state.screen) {
                     ScreenState.IDLE -> IdleScreen(
                         pastSessions = state.pastSessions,
+                        onStartSession = { viewModel.startSession() },
                         onStartDebug = { viewModel.startSimulation() }
                     )
                     ScreenState.LIVE -> LiveSessionScreen(
                         session = state.currentSession,
-                        latestDataPoint = state.latestDataPoint,
-                        isSimulating = state.isSimulating,
-                        onStopDebug = { viewModel.stopSimulation() }
+                        latestEvent = state.latestEvent,
+                        onStopSession = { viewModel.stopSession() }
                     )
                     ScreenState.SCORECARD -> ScorecardScreen(
                         session = state.completedSession,
