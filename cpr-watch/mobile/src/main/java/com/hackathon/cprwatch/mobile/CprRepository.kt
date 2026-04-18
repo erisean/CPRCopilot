@@ -1,6 +1,6 @@
 package com.hackathon.cprwatch.mobile
 
-import com.hackathon.cprwatch.shared.CprDataPoint
+import com.hackathon.cprwatch.shared.CompressionEvent
 import com.hackathon.cprwatch.shared.CprSession
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -17,23 +17,36 @@ object CprRepository {
     private val _simulating = MutableStateFlow(false)
     val simulating: StateFlow<Boolean> = _simulating
 
+    private val _listening = MutableStateFlow(false)
+    val listening: StateFlow<Boolean> = _listening
+
+    fun startListening() {
+        _listening.value = true
+    }
+
+    fun stopListening() {
+        _listening.value = false
+    }
+
     fun startSession() {
         _currentSession.value = CprSession(startTimeMs = System.currentTimeMillis())
     }
 
-    fun addDataPoint(dataPoint: CprDataPoint) {
+    fun addCompressionEvent(event: CompressionEvent) {
         _currentSession.update { session ->
-            session?.copy(dataPoints = session.dataPoints + dataPoint)
-                ?: CprSession(
-                    startTimeMs = System.currentTimeMillis(),
-                    dataPoints = listOf(dataPoint)
-                )
+            session?.copy(compressionEvents = session.compressionEvents + event)
+                ?: if (_listening.value || _simulating.value) {
+                    CprSession(
+                        startTimeMs = System.currentTimeMillis(),
+                        compressionEvents = listOf(event)
+                    )
+                } else null
         }
     }
 
     fun endSession() {
         val session = _currentSession.value ?: return
-        if (session.dataPoints.isNotEmpty()) {
+        if (session.compressionEvents.isNotEmpty()) {
             _pastSessions.update { it + session }
         }
         _currentSession.value = null

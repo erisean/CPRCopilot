@@ -45,6 +45,7 @@ private val DimText = Color(0xFF6B6B6B)
 @Composable
 fun IdleScreen(
     pastSessions: List<CprSession>,
+    onStartSession: () -> Unit,
     onStartDebug: () -> Unit
 ) {
     val greeting = remember {
@@ -99,7 +100,7 @@ fun IdleScreen(
                     .padding(vertical = 16.dp)
                     .clip(RoundedCornerShape(20.dp))
                     .background(CardBg)
-                    .clickable { onStartDebug() },
+                    .clickable { onStartSession() },
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -128,13 +129,25 @@ fun IdleScreen(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(32.dp))
+                    Spacer(modifier = Modifier.height(24.dp))
 
                     Text(
                         text = "\"hey google, start CPR\"",
                         fontSize = 12.sp,
                         color = DimText,
                         fontWeight = FontWeight.Light
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        text = "debug mode",
+                        fontSize = 12.sp,
+                        color = Color(0xFF4CAF50),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { onStartDebug() }
+                            .padding(horizontal = 12.dp, vertical = 4.dp)
                     )
                 }
             }
@@ -207,8 +220,9 @@ private fun StatsBar(pastSessions: List<CprSession>) {
     val sessionCount = pastSessions.size
     val bestGrade = if (pastSessions.isNotEmpty()) {
         val bestPct = pastSessions.maxOf { session ->
-            if (session.dataPoints.isEmpty()) 0
-            else session.dataPoints.count { it.rate in 100..120 } * 100 / session.dataPoints.size
+            val events = session.compressionEvents
+            if (events.isEmpty()) 0
+            else events.count { it.rollingRateBpm in 100f..120f } * 100 / events.size
         }
         when {
             bestPct >= 80 -> "A"
@@ -219,9 +233,9 @@ private fun StatsBar(pastSessions: List<CprSession>) {
     } else "–"
 
     val avgInZone = if (pastSessions.isNotEmpty()) {
-        val allPoints = pastSessions.flatMap { it.dataPoints }
-        if (allPoints.isNotEmpty()) {
-            allPoints.count { it.rate in 100..120 } * 100 / allPoints.size
+        val allEvents = pastSessions.flatMap { it.compressionEvents }
+        if (allEvents.isNotEmpty()) {
+            allEvents.count { it.rollingRateBpm in 100f..120f } * 100 / allEvents.size
         } else 0
     } else 0
 

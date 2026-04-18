@@ -25,8 +25,8 @@
                 <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
             </intent-filter>
             <meta-data
-                android:name="com.google.android.gms.wearable.MESSAGE_LISTENER_FILTER"
-                android:value="/cpr-*" />
+                android:name="com.google.android.gms.wearable.MESSAGE_LISTENER_FILTER_PREFIX"
+                android:value="/cpr-" />
         </service>
     </application>
 </manifest>

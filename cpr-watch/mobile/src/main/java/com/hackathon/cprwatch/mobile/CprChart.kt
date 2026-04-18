@@ -16,113 +16,60 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.hackathon.cprwatch.shared.CprDataPoint
+import com.hackathon.cprwatch.shared.CompressionEvent
 
 @Composable
-fun RateChart(
-    dataPoints: List<CprDataPoint>,
+fun CompressionRateChart(
+    events: List<CompressionEvent>,
     modifier: Modifier = Modifier
 ) {
-    ChartWithBands(
-        title = "Rate Over Time",
-        dataPoints = dataPoints,
-        valueSelector = { it.rate.toFloat() },
-        minValue = 60f,
-        maxValue = 160f,
-        bandLow = 100f,
-        bandHigh = 120f,
-        lineColor = Color(0xFF42A5F5),
-        bandColor = Color(0x2000C853),
+    Canvas(
         modifier = modifier
-    )
-}
+            .height(160.dp)
+            .padding(horizontal = 4.dp)
+    ) {
+        if (events.isEmpty()) return@Canvas
 
-@Composable
-fun DepthChart(
-    dataPoints: List<CprDataPoint>,
-    modifier: Modifier = Modifier
-) {
-    ChartWithBands(
-        title = "Depth Over Time",
-        dataPoints = dataPoints,
-        valueSelector = { it.depthCm },
-        minValue = 0f,
-        maxValue = 10f,
-        bandLow = 5f,
-        bandHigh = 6f,
-        lineColor = Color(0xFFFFB74D),
-        bandColor = Color(0x2000C853),
-        modifier = modifier
-    )
-}
+        val minValue = 60f
+        val maxValue = 160f
+        val range = maxValue - minValue
+        val bandTopY = size.height * (1 - (120f - minValue) / range)
+        val bandBottomY = size.height * (1 - (100f - minValue) / range)
 
-@Composable
-private fun ChartWithBands(
-    title: String,
-    dataPoints: List<CprDataPoint>,
-    valueSelector: (CprDataPoint) -> Float,
-    minValue: Float,
-    maxValue: Float,
-    bandLow: Float,
-    bandHigh: Float,
-    lineColor: Color,
-    bandColor: Color,
-    modifier: Modifier = Modifier
-) {
-    Column(modifier = modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface
+        // Target zone
+        drawRect(
+            color = Color(0x1A4CAF50),
+            topLeft = Offset(0f, bandTopY),
+            size = androidx.compose.ui.geometry.Size(size.width, bandBottomY - bandTopY)
         )
 
-        Canvas(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(160.dp)
-                .padding(top = 8.dp)
-        ) {
-            if (dataPoints.isEmpty()) return@Canvas
+        drawDashedLine(bandTopY, Color(0xFF4CAF50).copy(alpha = 0.3f))
+        drawDashedLine(bandBottomY, Color(0xFF4CAF50).copy(alpha = 0.3f))
 
-            val range = maxValue - minValue
-            val bandTopY = size.height * (1 - (bandHigh - minValue) / range)
-            val bandBottomY = size.height * (1 - (bandLow - minValue) / range)
+        if (events.size < 2) return@Canvas
 
-            drawRect(
-                color = bandColor,
-                topLeft = Offset(0f, bandTopY),
-                size = androidx.compose.ui.geometry.Size(size.width, bandBottomY - bandTopY)
+        val path = Path()
+        val xStep = size.width / (events.size - 1).coerceAtLeast(1)
+
+        events.forEachIndexed { i, event ->
+            val value = event.rollingRateBpm.coerceIn(minValue, maxValue)
+            val x = i * xStep
+            val y = size.height * (1 - (value - minValue) / range)
+            if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+        }
+
+        drawPath(path, Color(0xFF42A5F5), style = Stroke(width = 2.5.dp.toPx()))
+
+        events.forEachIndexed { i, event ->
+            val value = event.rollingRateBpm.coerceIn(minValue, maxValue)
+            val x = i * xStep
+            val y = size.height * (1 - (value - minValue) / range)
+            val inBand = value in 100f..120f
+            drawCircle(
+                color = if (inBand) Color(0xFF4CAF50) else Color(0xFFF44336),
+                radius = 2.5.dp.toPx(),
+                center = Offset(x, y)
             )
-
-            drawDashedLine(bandTopY, Color(0xFF4CAF50).copy(alpha = 0.4f))
-            drawDashedLine(bandBottomY, Color(0xFF4CAF50).copy(alpha = 0.4f))
-
-            if (dataPoints.size < 2) return@Canvas
-
-            val path = Path()
-            val xStep = size.width / (dataPoints.size - 1).coerceAtLeast(1)
-
-            dataPoints.forEachIndexed { index, point ->
-                val value = valueSelector(point).coerceIn(minValue, maxValue)
-                val x = index * xStep
-                val y = size.height * (1 - (value - minValue) / range)
-                if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
-            }
-
-            drawPath(path = path, color = lineColor, style = Stroke(width = 2.5.dp.toPx()))
-
-            dataPoints.forEachIndexed { index, point ->
-                val value = valueSelector(point).coerceIn(minValue, maxValue)
-                val x = index * xStep
-                val y = size.height * (1 - (value - minValue) / range)
-                val inBand = value in bandLow..bandHigh
-                drawCircle(
-                    color = if (inBand) Color(0xFF4CAF50) else Color(0xFFF44336),
-                    radius = 2.5.dp.toPx(),
-                    center = Offset(x, y)
-                )
-            }
         }
     }
 }

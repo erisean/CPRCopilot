@@ -2,7 +2,6 @@ package com.hackathon.cprwatch.mobile
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,7 +17,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -32,7 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.hackathon.cprwatch.shared.CprDataPoint
+import com.hackathon.cprwatch.shared.CompressionEvent
 import com.hackathon.cprwatch.shared.CprSession
 
 private val DarkBg = Color(0xFF0D0D0D)
@@ -44,19 +42,32 @@ private val Orange = Color(0xFFFF9800)
 @Composable
 fun LiveSessionScreen(
     session: CprSession?,
-    latestDataPoint: CprDataPoint?,
-    isSimulating: Boolean,
-    onStopDebug: () -> Unit
+    latestEvent: CompressionEvent?,
+    onStopSession: () -> Unit
 ) {
-    val dataPoints = session?.dataPoints ?: emptyList()
-    val rate = latestDataPoint?.rate ?: 0
-    val feedback = latestDataPoint?.feedback ?: ""
+    val events = session?.compressionEvents ?: emptyList()
+    val rate = latestEvent?.rollingRateBpm?.toInt() ?: 0
+    val instruction = latestEvent?.instruction ?: "none"
 
     val status = when {
         rate == 0 -> RateStatus.WAITING
         rate in 100..120 -> RateStatus.IN_ZONE
         rate < 100 -> RateStatus.TOO_SLOW
         else -> RateStatus.TOO_FAST
+    }
+
+    val feedback = when (instruction) {
+        "none" -> if (rate > 0) "Good compressions!" else ""
+        "faster" -> "Push faster"
+        "slower" -> "Slow down"
+        "push_harder" -> "Push harder"
+        "ease_up" -> "Ease up"
+        "let_chest_up" -> "Let chest recoil"
+        "resume_compressions" -> "Resume compressions!"
+        "switch_rescuers" -> "Switch rescuers"
+        "consider_switching" -> "Consider switching"
+        "stay_strong" -> "Stay strong!"
+        else -> "Good compressions!"
     }
 
     Surface(
@@ -91,7 +102,7 @@ fun LiveSessionScreen(
                     )
                 }
                 OutlinedButton(
-                    onClick = onStopDebug,
+                    onClick = onStopSession,
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Red),
                     border = androidx.compose.foundation.BorderStroke(1.dp, Red.copy(alpha = 0.5f)),
                     shape = RoundedCornerShape(20.dp)
@@ -115,12 +126,12 @@ fun LiveSessionScreen(
                 modifier = Modifier.padding(start = 4.dp)
             )
             Spacer(modifier = Modifier.height(4.dp))
-            RateChart(dataPoints = dataPoints, modifier = Modifier.fillMaxWidth())
+            CompressionRateChart(events = events, modifier = Modifier.fillMaxWidth())
 
             Spacer(modifier = Modifier.height(16.dp))
 
             // Stats grid
-            StatsGrid(dataPoints = dataPoints)
+            StatsGrid(events = events)
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -191,20 +202,20 @@ private fun HeroBpm(rate: Int, status: RateStatus) {
 }
 
 @Composable
-private fun StatsGrid(dataPoints: List<CprDataPoint>) {
-    val compressionCount = dataPoints.size
-    val inZoneCount = dataPoints.count { it.rate in 100..120 }
-    val inZonePct = if (compressionCount > 0) inZoneCount * 100 / compressionCount else 0
-    val avgRate = if (compressionCount > 0) dataPoints.map { it.rate }.average().toInt() else 0
-    val durationSec = if (dataPoints.size >= 2) {
-        (dataPoints.last().timestampMs - dataPoints.first().timestampMs) / 1000
+private fun StatsGrid(events: List<CompressionEvent>) {
+    val count = events.size
+    val inZoneCount = events.count { it.rollingRateBpm in 100f..120f }
+    val inZonePct = if (count > 0) inZoneCount * 100 / count else 0
+    val avgRate = if (count > 0) events.map { it.rollingRateBpm }.average().toInt() else 0
+    val durationSec = if (events.size >= 2) {
+        (events.last().timestampMs - events.first().timestampMs) / 1000
     } else 0L
 
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        StatCard("Compressions", "$compressionCount", modifier = Modifier.weight(1f))
+        StatCard("Compressions", "$count", modifier = Modifier.weight(1f))
         StatCard("Duration", formatDuration(durationSec), modifier = Modifier.weight(1f))
     }
 
@@ -220,7 +231,7 @@ private fun StatsGrid(dataPoints: List<CprDataPoint>) {
             valueColor = when {
                 inZonePct >= 80 -> Green
                 inZonePct >= 50 -> Orange
-                compressionCount == 0 -> Color.White
+                count == 0 -> Color.White
                 else -> Red
             },
             modifier = Modifier.weight(1f)
