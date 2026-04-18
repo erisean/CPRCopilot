@@ -14,6 +14,9 @@ object CprRepository {
     private val _pastSessions = MutableStateFlow<List<CprSession>>(emptyList())
     val pastSessions: StateFlow<List<CprSession>> = _pastSessions
 
+    private val _simulating = MutableStateFlow(false)
+    val simulating: StateFlow<Boolean> = _simulating
+
     fun startSession() {
         _currentSession.value = CprSession(startTimeMs = System.currentTimeMillis())
     }
@@ -34,5 +37,9 @@ object CprRepository {
             _pastSessions.update { it + session }
         }
         _currentSession.value = null
+    }
+
+    fun setSimulating(value: Boolean) {
+        _simulating.value = value
     }
 }

@@ -24,14 +24,14 @@ fun RateChart(
     modifier: Modifier = Modifier
 ) {
     ChartWithBands(
-        title = "Compression Rate (BPM)",
+        title = "Rate Over Time",
         dataPoints = dataPoints,
         valueSelector = { it.rate.toFloat() },
         minValue = 60f,
         maxValue = 160f,
         bandLow = 100f,
         bandHigh = 120f,
-        lineColor = Color(0xFF2196F3),
+        lineColor = Color(0xFF42A5F5),
         bandColor = Color(0x2000C853),
         modifier = modifier
     )
@@ -43,14 +43,14 @@ fun DepthChart(
     modifier: Modifier = Modifier
 ) {
     ChartWithBands(
-        title = "Compression Depth (cm)",
+        title = "Depth Over Time",
         dataPoints = dataPoints,
         valueSelector = { it.depthCm },
         minValue = 0f,
         maxValue = 10f,
         bandLow = 5f,
         bandHigh = 6f,
-        lineColor = Color(0xFFFF9800),
+        lineColor = Color(0xFFFFB74D),
         bandColor = Color(0x2000C853),
         modifier = modifier
     )
@@ -69,17 +69,18 @@ private fun ChartWithBands(
     bandColor: Color,
     modifier: Modifier = Modifier
 ) {
-    Column(modifier = modifier.padding(16.dp)) {
+    Column(modifier = modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
         Text(
             text = title,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface
         )
 
         Canvas(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(200.dp)
+                .height(160.dp)
                 .padding(top = 8.dp)
         ) {
             if (dataPoints.isEmpty()) return@Canvas
@@ -88,18 +89,15 @@ private fun ChartWithBands(
             val bandTopY = size.height * (1 - (bandHigh - minValue) / range)
             val bandBottomY = size.height * (1 - (bandLow - minValue) / range)
 
-            // Target band
             drawRect(
                 color = bandColor,
                 topLeft = Offset(0f, bandTopY),
                 size = androidx.compose.ui.geometry.Size(size.width, bandBottomY - bandTopY)
             )
 
-            // Band boundary lines
-            drawDashedLine(bandTopY, Color.Green.copy(alpha = 0.5f))
-            drawDashedLine(bandBottomY, Color.Green.copy(alpha = 0.5f))
+            drawDashedLine(bandTopY, Color(0xFF4CAF50).copy(alpha = 0.4f))
+            drawDashedLine(bandBottomY, Color(0xFF4CAF50).copy(alpha = 0.4f))
 
-            // Data line
             if (dataPoints.size < 2) return@Canvas
 
             val path = Path()
@@ -109,26 +107,19 @@ private fun ChartWithBands(
                 val value = valueSelector(point).coerceIn(minValue, maxValue)
                 val x = index * xStep
                 val y = size.height * (1 - (value - minValue) / range)
-
                 if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
             }
 
-            drawPath(
-                path = path,
-                color = lineColor,
-                style = Stroke(width = 3.dp.toPx())
-            )
+            drawPath(path = path, color = lineColor, style = Stroke(width = 2.5.dp.toPx()))
 
-            // Draw dots for each point
             dataPoints.forEachIndexed { index, point ->
                 val value = valueSelector(point).coerceIn(minValue, maxValue)
                 val x = index * xStep
                 val y = size.height * (1 - (value - minValue) / range)
-
                 val inBand = value in bandLow..bandHigh
                 drawCircle(
-                    color = if (inBand) Color.Green else Color.Red,
-                    radius = 3.dp.toPx(),
+                    color = if (inBand) Color(0xFF4CAF50) else Color(0xFFF44336),
+                    radius = 2.5.dp.toPx(),
                     center = Offset(x, y)
                 )
             }
