@@ -139,6 +139,35 @@ private fun ActiveScreen(state: CprUiState, onStop: () -> Unit) {
             )
         }
 
+        Spacer(modifier = Modifier.height(4.dp))
+
+        // Surface calibration status
+        if (!state.surfaceCalibrated && state.surfaceCalibrationProgress > 0f) {
+            Text(
+                text = "Calibrating surface... ${"%.0f".format(state.surfaceCalibrationProgress * 100)}%",
+                fontSize = 10.sp,
+                color = Color.Cyan,
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+        } else if (state.surfaceCalibrated && state.surfaceProfile != null) {
+            Text(
+                text = "${state.surfaceProfile.surfaceLabel} · ${state.surfaceProfile.targetDepthMinMm.toInt()}–${state.surfaceProfile.targetDepthMaxMm.toInt()}mm",
+                fontSize = 10.sp,
+                color = Color.Cyan,
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+        }
+
+        // Feedback message
+        Text(
+            text = state.feedbackMessage,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            color = feedbackColor,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
         StatBox(
            // title = "Depth Guide",
             value = depthGuide(state.depthGuidanceFeedback),

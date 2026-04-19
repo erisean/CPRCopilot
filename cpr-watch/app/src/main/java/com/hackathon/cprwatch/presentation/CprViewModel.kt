@@ -10,6 +10,7 @@ import com.hackathon.cprwatch.sensor.CompressionDetector
 import com.hackathon.cprwatch.sensor.CompressionFeedback
 import com.hackathon.cprwatch.sensor.CompressionMetrics
 import com.hackathon.cprwatch.sensor.CompressionResult
+import com.hackathon.cprwatch.sensor.SurfaceProfile
 import com.hackathon.cprwatch.sensor.HeartRateMonitor
 import com.hackathon.cprwatch.shared.CompressionEvent
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -98,6 +99,13 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
             .onEach { result ->
                 if (!sessionActive) return@onEach
                 updateDepthGuidance(_uiState.value.feedback)
+
+                val cal = detector.surfaceCalibrator
+                _uiState.value = _uiState.value.copy(
+                    surfaceCalibrated = cal.isCalibrated,
+                    surfaceCalibrationProgress = cal.progress,
+                    surfaceProfile = cal.profile
+                )
 
                 viewModelScope.launch {
                     try {
@@ -227,6 +235,9 @@ data class CprUiState(
     val accelZ: Float = 0f,
     val accelMagnitude: Float = 0f,
     val accelTimestampMs: Long = 0L,
+    val surfaceCalibrated: Boolean = false,
+    val surfaceCalibrationProgress: Float = 0f,
+    val surfaceProfile: SurfaceProfile? = null,
     val rescuerHr: Int = 0,
     val messagesSent: Int = 0,
     val sendError: String? = null,
