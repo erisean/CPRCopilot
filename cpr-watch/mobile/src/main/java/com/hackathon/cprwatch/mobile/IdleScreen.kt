@@ -144,13 +144,6 @@ fun IdleScreen(
                     }
 
                     Spacer(modifier = Modifier.height(20.dp))
-
-                    Text(
-                        text = "\"hey google, start CPR\"",
-                        fontSize = 12.sp,
-                        color = DimText,
-                        fontWeight = FontWeight.Light
-                    )
                 }
             }
 

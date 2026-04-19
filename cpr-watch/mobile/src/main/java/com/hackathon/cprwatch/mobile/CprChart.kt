@@ -89,18 +89,6 @@ fun CompressionDepthChart(
         val minValue = 0f
         val maxValue = 80f
         val range = maxValue - minValue
-        val bandTopY = size.height * (1 - (60f - minValue) / range)
-        val bandBottomY = size.height * (1 - (50f - minValue) / range)
-
-        drawRect(
-            color = Color(0x1AFF9800),
-            topLeft = Offset(0f, bandTopY),
-            size = androidx.compose.ui.geometry.Size(size.width, bandBottomY - bandTopY)
-        )
-
-        drawDashedLine(bandTopY, Color(0xFFFF9800).copy(alpha = 0.3f))
-        drawDashedLine(bandBottomY, Color(0xFFFF9800).copy(alpha = 0.3f))
-
         if (events.size < 2) return@Canvas
 
         val path = Path()
