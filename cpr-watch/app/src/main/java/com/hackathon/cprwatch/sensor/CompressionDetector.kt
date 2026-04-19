@@ -100,7 +100,7 @@ class CompressionDetector(context: Context) : SensorEventListener {
     private val downstrokeThreshold = -2.0f   // m/s² — negative = pushing down
     private val recoilThreshold = 0.5f         // m/s² — positive = moving up
     private val velocityNearZero = 0.3f        // m/s — cycle boundary
-    private val minCompressionIntervalMs = 350L
+    private val minCompressionIntervalMs = 150L
     private val idleTimeoutMs = 3000L
     private val maxPhaseDurationMs = 1500L
     private val motionActivityThreshold = 0.8f
@@ -246,7 +246,7 @@ class CompressionDetector(context: Context) : SensorEventListener {
 
                 // Compression complete when velocity returns near zero
                 // (hands momentarily stationary between compressions)
-                if (abs(velocity) < velocityNearZero && displacement > minDisplacement) {
+                if (abs(velocity) < velocityNearZero) { //&& displacement > minDisplacement) {
                     onCompressionComplete(currentTimeMs)
                     phase = CyclePhase.IDLE
                     phaseEnteredMs = currentTimeMs
