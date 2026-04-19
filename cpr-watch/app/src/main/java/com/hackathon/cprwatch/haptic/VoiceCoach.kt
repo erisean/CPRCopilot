@@ -27,8 +27,8 @@ class VoiceCoach(context: Context) : TextToSpeech.OnInitListener {
         val message = when (feedback) {
             CompressionFeedback.TOO_SLOW -> "Speed up"
             CompressionFeedback.TOO_FAST -> "Slow down"
-            CompressionFeedback.TOO_SHALLOW -> "Push harder"
-            CompressionFeedback.TOO_DEEP -> "Ease up"
+//            CompressionFeedback.TOO_SHALLOW -> "Push harder"
+//            CompressionFeedback.TOO_DEEP -> "Ease up"
             else -> return
         }
 
