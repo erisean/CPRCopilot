@@ -10,9 +10,13 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.max
+import kotlin.math.sin
 import kotlin.math.sqrt
+import kotlin.math.tan
 
 data class CompressionMetrics(
     val rate: Int = 0,
@@ -49,6 +53,52 @@ enum class CompressionFeedback {
     TOO_FAST,
     TOO_SHALLOW,
     TOO_DEEP
+}
+
+private class BiquadFilter(
+    private val b0: Float, private val b1: Float, private val b2: Float,
+    private val a1: Float, private val a2: Float
+) {
+    private var x1 = 0f; private var x2 = 0f
+    private var y1 = 0f; private var y2 = 0f
+
+    fun process(x: Float): Float {
+        val y = b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2
+        x2 = x1; x1 = x; y2 = y1; y1 = y
+        return y
+    }
+
+    fun reset() { x1 = 0f; x2 = 0f; y1 = 0f; y2 = 0f }
+
+    companion object {
+        fun highpass(cutoffHz: Float, sampleRate: Float): BiquadFilter {
+            val w0 = (2.0 * PI * cutoffHz / sampleRate).toFloat()
+            val alpha = sin(w0) / (2f * 0.707f)
+            val cosW0 = cos(w0)
+            val a0 = 1f + alpha
+            return BiquadFilter(
+                b0 = ((1f + cosW0) / 2f) / a0,
+                b1 = -(1f + cosW0) / a0,
+                b2 = ((1f + cosW0) / 2f) / a0,
+                a1 = (-2f * cosW0) / a0,
+                a2 = (1f - alpha) / a0
+            )
+        }
+
+        fun lowpass(cutoffHz: Float, sampleRate: Float): BiquadFilter {
+            val w0 = (2.0 * PI * cutoffHz / sampleRate).toFloat()
+            val alpha = sin(w0) / (2f * 0.707f)
+            val cosW0 = cos(w0)
+            val a0 = 1f + alpha
+            return BiquadFilter(
+                b0 = ((1f - cosW0) / 2f) / a0,
+                b1 = (1f - cosW0) / a0,
+                b2 = ((1f - cosW0) / 2f) / a0,
+                a1 = (-2f * cosW0) / a0,
+                a2 = (1f - alpha) / a0
+            )
+        }
+    }
 }
 
 class CompressionDetector(context: Context) : SensorEventListener {
@@ -93,6 +143,12 @@ class CompressionDetector(context: Context) : SensorEventListener {
     private var lastCompressionMs = 0L
     private val compressionTimestamps = mutableListOf<Long>()
     private val recentIntervals = ArrayDeque<Int>(5)
+
+    // Bandpass filter for depth integration (initialized after sample rate is known)
+    private var highpassFilter: BiquadFilter? = null
+    private var lowpassFilter: BiquadFilter? = null
+    private var sampleCount = 0
+    private var sampleRateEstimate = 0f
 
     // Timing
     private var lastTimestamp = 0L
@@ -145,6 +201,10 @@ class CompressionDetector(context: Context) : SensorEventListener {
         gravityX = 0f; gravityY = 0f; gravityZ = 0f
         calibrationStartMs = 0L
         isCalibrating = true
+        highpassFilter = null
+        lowpassFilter = null
+        sampleCount = 0
+        sampleRateEstimate = 0f
         _metrics.value = CompressionMetrics()
         _liveSample.value = AccelerometerSample()
     }
@@ -188,12 +248,18 @@ class CompressionDetector(context: Context) : SensorEventListener {
         val currentTimeMs = now / 1_000_000
 
         // Calibration phase
+        sampleCount++
         if (isCalibrating) {
             if (currentTimeMs - calibrationStartMs < calibrationDurationMs) {
                 _metrics.value = CompressionMetrics(feedback = CompressionFeedback.CALIBRATING)
                 return
             }
             isCalibrating = false
+            sampleRateEstimate = sampleCount * 1000f / calibrationDurationMs
+            Log.d(TAG, "Estimated sample rate: %.0f Hz".format(sampleRateEstimate))
+            val sr = sampleRateEstimate.coerceIn(50f, 500f)
+            highpassFilter = BiquadFilter.highpass(0.5f, sr)
+            lowpassFilter = BiquadFilter.lowpass(5f, sr)
         }
 
         // Linear acceleration
@@ -208,6 +274,10 @@ class CompressionDetector(context: Context) : SensorEventListener {
         } else {
             az
         }
+
+        val filteredAccel = highpassFilter?.let { hp ->
+            lowpassFilter?.let { lp -> lp.process(hp.process(verticalAccel)) }
+        } ?: verticalAccel
 
         val accelMagnitude = sqrt(ax * ax + ay * ay + az * az)
 
@@ -241,7 +311,7 @@ class CompressionDetector(context: Context) : SensorEventListener {
             }
 
             CyclePhase.DOWNSTROKE -> {
-                velocity += verticalAccel * dt
+                velocity += filteredAccel * dt
                 displacement += velocity * dt
 
                 if (displacement < minDisplacement) {
@@ -261,7 +331,7 @@ class CompressionDetector(context: Context) : SensorEventListener {
             }
 
             CyclePhase.RECOIL -> {
-                velocity += verticalAccel * dt
+                velocity += filteredAccel * dt
                 displacement += velocity * dt
 
                 // Compression complete when velocity returns near zero
@@ -371,6 +441,8 @@ class CompressionDetector(context: Context) : SensorEventListener {
         lastCompressionMs = 0L
         compressionTimestamps.clear()
         recentIntervals.clear()
+        highpassFilter?.reset()
+        lowpassFilter?.reset()
     }
 
     private fun pruneOldTimestamps(currentTimeMs: Long) {
