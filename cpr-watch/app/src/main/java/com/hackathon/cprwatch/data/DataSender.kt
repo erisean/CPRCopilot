@@ -1,6 +1,7 @@
 package com.hackathon.cprwatch.data
 
 import android.content.Context
+import android.util.Log
 import com.google.android.gms.wearable.Wearable
 import com.hackathon.cprwatch.shared.CompressionEvent
 import com.hackathon.cprwatch.shared.CprDataPoint
@@ -34,7 +35,12 @@ class DataSender(context: Context) {
 
     private suspend fun sendToAll(path: String, data: ByteArray) {
         val nodes = nodeClient.connectedNodes.await()
+        Log.d("CPRWatch", "sendToAll path=$path nodes=${nodes.size} dataSize=${data.size}")
+        if (nodes.isEmpty()) {
+            Log.w("CPRWatch", "No connected nodes found — message not sent")
+        }
         for (node in nodes) {
+            Log.d("CPRWatch", "Sending to node=${node.displayName} id=${node.id}")
             messageClient.sendMessage(node.id, path, data).await()
         }
     }

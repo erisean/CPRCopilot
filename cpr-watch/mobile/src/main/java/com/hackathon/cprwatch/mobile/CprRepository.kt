@@ -35,12 +35,10 @@ object CprRepository {
     fun addCompressionEvent(event: CompressionEvent) {
         _currentSession.update { session ->
             session?.copy(compressionEvents = session.compressionEvents + event)
-                ?: if (_listening.value || _simulating.value) {
-                    CprSession(
-                        startTimeMs = System.currentTimeMillis(),
-                        compressionEvents = listOf(event)
-                    )
-                } else null
+                ?: CprSession(
+                    startTimeMs = System.currentTimeMillis(),
+                    compressionEvents = listOf(event)
+                )
         }
     }
 

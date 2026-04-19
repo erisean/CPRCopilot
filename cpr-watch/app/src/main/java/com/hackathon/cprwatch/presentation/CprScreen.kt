@@ -148,7 +148,18 @@ private fun ActiveScreen(state: CprUiState, onStop: () -> Unit) {
             modifier = Modifier.fillMaxWidth()
         )
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(4.dp))
+
+        Text(
+            text = if (state.sendError != null) "Send err: ${state.sendError}"
+                   else "Sent: ${state.messagesSent}",
+            fontSize = 9.sp,
+            color = if (state.sendError != null) Color.Red else Color(0xFF4CAF50),
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(modifier = Modifier.height(4.dp))
 
         // Stop button
         Button(

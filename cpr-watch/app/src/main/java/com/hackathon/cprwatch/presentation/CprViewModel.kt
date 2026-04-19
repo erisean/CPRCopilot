@@ -28,6 +28,8 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
     private var sessionActive = false
     private var compressionIdx = 0
     private var lastCompressionMs = 0L
+    private var messagesSent = 0
+    private var lastSendError: String? = null
 
     init {
         observeDetector()
@@ -119,7 +121,15 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
                                     }
                                 )
                             )
-                        } catch (_: Exception) {}
+                            messagesSent++
+                            lastSendError = null
+                        } catch (e: Exception) {
+                            lastSendError = e.message ?: "Send failed"
+                        }
+                        _uiState.value = _uiState.value.copy(
+                            messagesSent = messagesSent,
+                            sendError = lastSendError
+                        )
                     }
                 }
 
@@ -175,5 +185,7 @@ data class CprUiState(
     val accelY: Float = 0f,
     val accelZ: Float = 0f,
     val accelMagnitude: Float = 0f,
-    val accelTimestampMs: Long = 0L
+    val accelTimestampMs: Long = 0L,
+    val messagesSent: Int = 0,
+    val sendError: String? = null
 )
