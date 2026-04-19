@@ -51,6 +51,9 @@ enum class CompressionFeedback {
     TOO_DEEP
 }
 
+/** Single accelerometer sample captured during a compression cycle, used for ZUPT post-processing. */
+private data class CycleSample(val dt: Float, val vertAccel: Float)
+
 class CompressionDetector(context: Context) : SensorEventListener {
 
     private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
@@ -82,11 +85,19 @@ class CompressionDetector(context: Context) : SensorEventListener {
     private var phase = CyclePhase.IDLE
     private var velocity = 0f
     private var displacement = 0f
-    private var minDisplacement = 0f  // most negative = deepest point
+    private var minDisplacement = 0f
     private var downstrokeStartMs = 0L
-    private var peakNegativeAccel = 0f  // strongest downward force this cycle
+    private var peakNegativeAccel = 0f
     private var phaseEnteredMs = 0L
     private var lastActivityMs = 0L
+
+    // Per-cycle sample buffer for ZUPT post-processing
+    private val cycleSamples = mutableListOf<CycleSample>()
+
+    // EMA smoothing for vertical acceleration before integration
+    private var smoothedVertAccel = 0f
+    private val accelSmoothingAlpha = 0.3f   // lower = smoother; 0.3 is a good noise/lag balance
+    private var smoothingInitialized = false
 
     // Rate tracking
     private var compressionIdx = 0
@@ -98,9 +109,9 @@ class CompressionDetector(context: Context) : SensorEventListener {
     private var lastTimestamp = 0L
 
     // Thresholds
-    private val downstrokeThreshold = -2.0f   // m/s² — negative = pushing down
-    private val recoilThreshold = 0.5f         // m/s² — positive = moving up
-    private val velocityNearZero = 0.3f        // m/s — cycle boundary
+    private val downstrokeThreshold = -2.0f
+    private val recoilThreshold = 0.5f
+    private val velocityNearZero = 0.3f
     private val minCompressionIntervalMs = 150L
     private val idleTimeoutMs = 3000L
     private val maxPhaseDurationMs = 1500L
@@ -145,6 +156,8 @@ class CompressionDetector(context: Context) : SensorEventListener {
         gravityX = 0f; gravityY = 0f; gravityZ = 0f
         calibrationStartMs = 0L
         isCalibrating = true
+        cycleSamples.clear()
+        smoothingInitialized = false
         _metrics.value = CompressionMetrics()
         _liveSample.value = AccelerometerSample()
     }
@@ -163,27 +176,29 @@ class CompressionDetector(context: Context) : SensorEventListener {
         val rawY = event.values[1]
         val rawZ = event.values[2]
 
-        // Gravity estimation
+        // Gravity estimation — only update when not actively compressing to
+        // prevent chest motion from contaminating the gravity vector.
         if (!gravityInitialized) {
             gravityX = rawX; gravityY = rawY; gravityZ = rawZ
             gravityInitialized = true
             calibrationStartMs = now / 1_000_000
         }
-        //if (phase == CyclePhase.IDLE) {
+        if (phase == CyclePhase.IDLE) {
             val alpha = gravityTimeConstantSec / (gravityTimeConstantSec + dt)
             gravityX = alpha * gravityX + (1 - alpha) * rawX
             gravityY = alpha * gravityY + (1 - alpha) * rawY
             gravityZ = alpha * gravityZ + (1 - alpha) * rawZ
             val mag = sqrt(gravityX * gravityX + gravityY * gravityY + gravityZ * gravityZ)
-            gravityX = gravityX / mag * 9.81f
-            gravityY = gravityY / mag * 9.81f
-            gravityZ = gravityZ / mag * 9.81f
+            if (mag > 0.1f) {
+                gravityX = gravityX / mag * 9.81f
+                gravityY = gravityY / mag * 9.81f
+                gravityZ = gravityZ / mag * 9.81f
+            }
             Log.v(TAG, "GRAVITY  gx=%.3f  gy=%.3f  gz=%.3f  gMag=%.3f".format(
                 gravityX, gravityY, gravityZ,
                 sqrt(gravityX * gravityX + gravityY * gravityY + gravityZ * gravityZ)
             ))
-       // }
-
+        }
 
         val currentTimeMs = now / 1_000_000
 
@@ -201,13 +216,22 @@ class CompressionDetector(context: Context) : SensorEventListener {
         val ay = rawY - gravityY
         val az = rawZ - gravityZ
 
-        // Signed vertical acceleration: negative = pushing down, positive = recoiling up
+        // Signed vertical acceleration projected onto gravity axis
         val gMag = sqrt(gravityX * gravityX + gravityY * gravityY + gravityZ * gravityZ)
-        val verticalAccel = if (gMag > 0.1f) {
+        val rawVerticalAccel = if (gMag > 0.1f) {
             (ax * gravityX + ay * gravityY + az * gravityZ) / gMag
         } else {
             az
         }
+
+        // EMA smoothing — reduces high-frequency noise before double-integration
+        if (!smoothingInitialized) {
+            smoothedVertAccel = rawVerticalAccel
+            smoothingInitialized = true
+        } else {
+            smoothedVertAccel = accelSmoothingAlpha * rawVerticalAccel + (1f - accelSmoothingAlpha) * smoothedVertAccel
+        }
+        val verticalAccel = smoothedVertAccel
 
         val accelMagnitude = sqrt(ax * ax + ay * ay + az * az)
 
@@ -236,22 +260,19 @@ class CompressionDetector(context: Context) : SensorEventListener {
                         displacement = 0f
                         minDisplacement = 0f
                         peakNegativeAccel = verticalAccel
+                        cycleSamples.clear()
                     }
                 }
             }
 
             CyclePhase.DOWNSTROKE -> {
+                cycleSamples.add(CycleSample(dt, verticalAccel))
+
                 velocity += verticalAccel * dt
                 displacement += velocity * dt
+                if (displacement < minDisplacement) minDisplacement = displacement
+                if (verticalAccel < peakNegativeAccel) peakNegativeAccel = verticalAccel
 
-                if (displacement < minDisplacement) {
-                    minDisplacement = displacement
-                }
-                if (verticalAccel < peakNegativeAccel) {
-                    peakNegativeAccel = verticalAccel
-                }
-
-                // Transition to recoil when acceleration goes positive
                 if (verticalAccel > recoilThreshold) {
                     Log.d(TAG, "→ RECOIL  t=${currentTimeMs}ms  vertAccel=%.2f  vel=%.3f  disp=%.4f  minDisp=%.4f  gx=%.3f  gy=%.3f  gz=%.3f".format(
                         verticalAccel, velocity, displacement, minDisplacement, gravityX, gravityY, gravityZ))
@@ -261,12 +282,12 @@ class CompressionDetector(context: Context) : SensorEventListener {
             }
 
             CyclePhase.RECOIL -> {
+                cycleSamples.add(CycleSample(dt, verticalAccel))
+
                 velocity += verticalAccel * dt
                 displacement += velocity * dt
 
-                // Compression complete when velocity returns near zero
-                // (hands momentarily stationary between compressions)
-                if (abs(velocity) < velocityNearZero) { //&& displacement > minDisplacement) {
+                if (abs(velocity) < velocityNearZero) {
                     Log.d(TAG, "→ COMPLETE  t=${currentTimeMs}ms  vel=%.3f  disp=%.4f  minDisp=%.4f  gx=%.3f  gy=%.3f  gz=%.3f".format(
                         velocity, displacement, minDisplacement, gravityX, gravityY, gravityZ))
                     onCompressionComplete(currentTimeMs)
@@ -276,9 +297,6 @@ class CompressionDetector(context: Context) : SensorEventListener {
             }
         }
 
-        // Recovery timeouts:
-        // 1) Reset if a phase lasts too long without completing.
-        // 2) Reset after inactivity based on real motion/compression activity.
         val stuckPhase = phase != CyclePhase.IDLE &&
             phaseEnteredMs > 0L &&
             (currentTimeMs - phaseEnteredMs) > maxPhaseDurationMs
@@ -291,6 +309,56 @@ class CompressionDetector(context: Context) : SensorEventListener {
             resetCycleState()
             _metrics.value = CompressionMetrics()
         }
+    }
+
+    /**
+     * ZUPT (Zero-Velocity Update) drift correction.
+     *
+     * Since we know velocity = 0 at the very start of a downstroke and is nominally
+     * ~0 at the end of recoil (hands momentarily still between compressions), we can
+     * remove the linear drift that accumulates during double-integration:
+     *
+     *  1. Forward-integrate raw vertical acceleration → uncorrected velocity curve.
+     *  2. The final velocity value is the drift error accumulated over the whole cycle.
+     *  3. Subtract a linearly-ramped correction so v_corrected(0) = 0 and v_corrected(end) = 0.
+     *  4. Integrate the corrected velocity → drift-free displacement curve.
+     *  5. The minimum of that displacement is the true compression depth.
+     *
+     * This eliminates low-frequency bias in the accelerometer that would otherwise
+     * cause the naïve double-integral to wander by tens of millimetres per second.
+     */
+    private fun computeZuptDepthMm(): Float {
+        val n = cycleSamples.size
+        if (n < 2) return (abs(minDisplacement) * 1000f).coerceIn(0f, 100f)
+
+        // Step 1 – build uncorrected velocity array (size n+1, index 0 = start)
+        val vel = FloatArray(n + 1)
+        vel[0] = 0f
+        for (i in 0 until n) {
+            vel[i + 1] = vel[i] + cycleSamples[i].vertAccel * cycleSamples[i].dt
+        }
+
+        // Step 2 – linear drift: vel[n] should be 0 at cycle end
+        val vDrift = vel[n]
+
+        // Step 3 – corrected velocity (subtract linearly ramped drift)
+        val velCorrected = FloatArray(n + 1)
+        for (i in 0..n) {
+            velCorrected[i] = vel[i] - vDrift * i.toFloat() / n
+        }
+
+        // Step 4 – integrate corrected velocity → displacement
+        var disp = 0f
+        var minDisp = 0f
+        for (i in 0 until n) {
+            disp += velCorrected[i] * cycleSamples[i].dt
+            if (disp < minDisp) minDisp = disp
+        }
+
+        val depthMm = (abs(minDisp) * 1000f).coerceIn(0f, 100f)
+        Log.d(TAG, "ZUPT  rawMinDisp=%.4f  correctedMinDisp=%.4f  depthMm=%.1f  vDrift=%.4f  samples=$n".format(
+            minDisplacement, minDisp, depthMm, vDrift))
+        return depthMm
     }
 
     private fun onCompressionComplete(timestampMs: Long) {
@@ -311,17 +379,16 @@ class CompressionDetector(context: Context) : SensorEventListener {
             if (windowSec > 0) ((compressionTimestamps.size - 1) / windowSec * 60).toInt() else 0
         } else 0
 
-        // Depth: minDisplacement is negative (meters downward), convert to positive mm
-        val depthMm = (abs(minDisplacement) * 1000f).coerceIn(0f, 100f)
+        // Use ZUPT-corrected depth instead of raw double-integration result
+        val depthMm = computeZuptDepthMm()
 
-        Log.i(TAG, "COMPRESSION #${compressionIdx}  interval=${intervalMs}ms  rate=${rate}bpm  depth=%.1fmm  minDisp=%.4f  gx=%.3f  gy=%.3f  gz=%.3f".format(
+        Log.i(TAG, "COMPRESSION #${compressionIdx}  interval=${intervalMs}ms  rate=${rate}bpm  depth=%.1fmm  rawMinDisp=%.4f  gx=%.3f  gy=%.3f  gz=%.3f".format(
             depthMm, minDisplacement, gravityX, gravityY, gravityZ))
 
-        // Recoil: how far displacement came back from the deepest point
+        // Recoil: how far displacement came back from the deepest point (use raw displacement for recoil estimate)
         val recoilMm = ((displacement - minDisplacement) * 1000f).coerceIn(0f, 100f)
         val recoilPct = if (depthMm > 0) (recoilMm / depthMm * 100f).coerceIn(0f, 100f) else 100f
 
-        // Duty cycle: downstroke duration / total interval
         val dutyCycle = if (intervalMs > 0) {
             ((timestampMs - downstrokeStartMs).toFloat() / intervalMs).coerceIn(0f, 1f)
         } else 0.5f
@@ -371,6 +438,7 @@ class CompressionDetector(context: Context) : SensorEventListener {
         lastCompressionMs = 0L
         compressionTimestamps.clear()
         recentIntervals.clear()
+        cycleSamples.clear()
     }
 
     private fun pruneOldTimestamps(currentTimeMs: Long) {
