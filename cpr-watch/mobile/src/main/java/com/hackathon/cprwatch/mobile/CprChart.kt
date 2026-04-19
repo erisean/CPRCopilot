@@ -77,7 +77,9 @@ fun CompressionRateChart(
 @Composable
 fun CompressionDepthChart(
     events: List<CompressionEvent>,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    targetMinMm: Float = 50f,
+    targetMaxMm: Float = 60f
 ) {
     Canvas(
         modifier = modifier
@@ -87,7 +89,7 @@ fun CompressionDepthChart(
         if (events.isEmpty()) return@Canvas
 
         val minValue = 0f
-        val maxValue = 200f
+        val maxValue = (targetMaxMm * 1.5f).coerceAtLeast(80f)
         val range = maxValue - minValue
         if (events.size < 2) return@Canvas
 
@@ -107,7 +109,7 @@ fun CompressionDepthChart(
             val value = event.estimatedDepthMm.coerceIn(minValue, maxValue)
             val x = i * xStep
             val y = size.height * (1 - (value - minValue) / range)
-            val inBand = value in 50f..60f
+            val inBand = value in targetMinMm..targetMaxMm
             drawCircle(
                 color = if (inBand) Color(0xFFFF9800) else Color(0xFFF44336),
                 radius = 2.dp.toPx(),
