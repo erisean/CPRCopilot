@@ -38,7 +38,8 @@ data class CompressionResult(
     val recoilMm: Float,
     val recoilPct: Float,
     val peakAccel: Float,
-    val dutyCycle: Float
+    val dutyCycle: Float,
+    val rescuerHrBpm: Int? = null
 )
 
 enum class CompressionFeedback {
