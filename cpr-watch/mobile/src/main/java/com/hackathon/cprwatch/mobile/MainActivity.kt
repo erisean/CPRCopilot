@@ -3,8 +3,16 @@ package com.hackathon.cprwatch.mobile
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.material3.MaterialTheme
@@ -21,26 +29,53 @@ class MainActivity : ComponentActivity(), MessageClient.OnMessageReceivedListene
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         setContent {
             MaterialTheme {
                 val state by viewModel.uiState.collectAsState()
-                when (state.screen) {
-                    ScreenState.IDLE -> IdleScreen(
-                        pastSessions = state.pastSessions,
-                        watchConnected = state.watchConnected,
-                        watchName = state.watchName,
-                        onStartSession = { viewModel.startSession() },
-                        onStartDebug = { viewModel.startSimulation() }
-                    )
-                    ScreenState.LIVE -> LiveSessionScreen(
-                        session = state.currentSession,
-                        latestEvent = state.latestEvent,
-                        onStopSession = { viewModel.stopSession() }
-                    )
-                    ScreenState.SCORECARD -> ScorecardScreen(
-                        session = state.completedSession,
-                        onDismiss = { viewModel.dismissScorecard() }
-                    )
+
+                AnimatedContent(
+                    targetState = state.screen,
+                    transitionSpec = {
+                        val forward = targetState.ordinal > initialState.ordinal
+                        if (forward) {
+                            (slideInHorizontally(tween(300)) { it } + fadeIn(tween(300)))
+                                .togetherWith(slideOutHorizontally(tween(300)) { -it / 3 } + fadeOut(tween(150)))
+                        } else {
+                            (slideInHorizontally(tween(300)) { -it } + fadeIn(tween(300)))
+                                .togetherWith(slideOutHorizontally(tween(300)) { it / 3 } + fadeOut(tween(150)))
+                        }
+                    },
+                    label = "screen"
+                ) { screen ->
+                    when (screen) {
+                        ScreenState.IDLE -> IdleScreen(
+                            pastSessions = state.pastSessions,
+                            watchConnected = state.watchConnected,
+                            watchName = state.watchName,
+                            onStartSession = { viewModel.startSession() },
+                            onStartDebug = { viewModel.startSimulation() },
+                            onShowHistory = { viewModel.showHistory() }
+                        )
+                        ScreenState.LIVE -> LiveSessionScreen(
+                            session = state.currentSession,
+                            latestEvent = state.latestEvent,
+                            onStopSession = { viewModel.stopSession() }
+                        )
+                        ScreenState.SCORECARD -> ScorecardScreen(
+                            session = state.completedSession,
+                            onDismiss = { viewModel.dismissScorecard() }
+                        )
+                        ScreenState.HISTORY -> SessionHistoryScreen(
+                            pastSessions = state.pastSessions,
+                            onSelectSession = { viewModel.showHistoryDetail(it) },
+                            onBack = { viewModel.backFromHistory() }
+                        )
+                        ScreenState.HISTORY_DETAIL -> ScorecardScreen(
+                            session = state.selectedHistorySession,
+                            onDismiss = { viewModel.backFromHistoryDetail() }
+                        )
+                    }
                 }
             }
         }

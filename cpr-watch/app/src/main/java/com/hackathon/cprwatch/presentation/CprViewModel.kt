@@ -41,7 +41,8 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
 
         _uiState.value = _uiState.value.copy(
             isActive = true,
-            feedbackMessage = "Start compressions"
+            feedbackMessage = "Start compressions",
+            metronomeBeatId = 0L
         )
 
         detector.start()
@@ -76,14 +77,6 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
                     feedbackMessage = if (sessionActive) feedbackMessage(metrics) else "Tap to start"
                 )
 
-                if (sessionActive &&
-                    metrics.feedback != CompressionFeedback.GOOD &&
-                    metrics.feedback != CompressionFeedback.IDLE &&
-                    metrics.feedback != CompressionFeedback.CALIBRATING &&
-                    metrics.isCompressing
-                ) {
-                    //haptic.pulseWarning()
-                }
             }
             .launchIn(viewModelScope)
 
@@ -118,6 +111,13 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
                     accelMagnitude = sample.magnitude,
                     accelTimestampMs = sample.timestampMs
                 )
+            }
+            .launchIn(viewModelScope)
+
+        haptic.metronomeBeats
+            .onEach { beatId ->
+                if (!sessionActive) return@onEach
+                _uiState.value = _uiState.value.copy(metronomeBeatId = beatId)
             }
             .launchIn(viewModelScope)
     }
@@ -157,8 +157,8 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun feedbackMessage(metrics: CompressionMetrics): String {
         return when (metrics.feedback) {
-            CompressionFeedback.IDLE -> "Tap to start"
-            CompressionFeedback.CALIBRATING -> "Calibrating…"
+            CompressionFeedback.IDLE -> "Resume compressions to continue"
+            CompressionFeedback.CALIBRATING -> "Begin compressions"
             CompressionFeedback.GOOD -> "Good compressions!"
             CompressionFeedback.TOO_SLOW -> "Push faster"
             CompressionFeedback.TOO_FAST -> "Slow down"
@@ -186,5 +186,6 @@ data class CprUiState(
     val accelMagnitude: Float = 0f,
     val accelTimestampMs: Long = 0L,
     val messagesSent: Int = 0,
-    val sendError: String? = null
+    val sendError: String? = null,
+    val metronomeBeatId: Long = 0L
 )

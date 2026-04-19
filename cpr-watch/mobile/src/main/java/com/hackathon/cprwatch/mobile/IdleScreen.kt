@@ -31,6 +31,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
@@ -52,6 +53,7 @@ fun IdleScreen(
     watchName: String?,
     onStartSession: () -> Unit,
     onStartDebug: () -> Unit,
+    onShowHistory: () -> Unit
 ) {
     val greeting = remember {
         when (Calendar.getInstance().get(Calendar.HOUR_OF_DAY)) {
@@ -68,7 +70,7 @@ fun IdleScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
+                .systemBarsPadding()
                 .padding(20.dp)
         ) {
             // Header
@@ -179,7 +181,7 @@ fun IdleScreen(
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
                     .background(CardBg)
-                    .clickable { }
+                    .clickable { onShowHistory() }
                     .padding(16.dp)
             ) {
                 Row(

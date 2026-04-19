@@ -17,7 +17,7 @@ import kotlinx.coroutines.launch
 import kotlin.math.sin
 import kotlin.random.Random
 
-enum class ScreenState { IDLE, LIVE, SCORECARD }
+enum class ScreenState { IDLE, LIVE, SCORECARD, HISTORY, HISTORY_DETAIL }
 
 data class MobileUiState(
     val screen: ScreenState = ScreenState.IDLE,
@@ -29,12 +29,15 @@ data class MobileUiState(
     val isListening: Boolean = false,
     val watchConnected: Boolean = false,
     val watchName: String? = null,
+    val selectedHistorySession: CprSession? = null
 )
 
 class CprViewModel(application: Application) : AndroidViewModel(application) {
 
     private var simulationJob: Job? = null
     private val _completedSession = MutableStateFlow<CprSession?>(null)
+    private val _screenOverride = MutableStateFlow<ScreenState?>(null)
+    private val _selectedHistorySession = MutableStateFlow<CprSession?>(null)
     private val connectionMonitor = WatchConnectionMonitor(application)
 
     init {
@@ -44,42 +47,42 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     val uiState: StateFlow<MobileUiState> = combine(
-        combine(
-            CprRepository.currentSession,
-            CprRepository.pastSessions,
-            CprRepository.simulating,
-            CprRepository.listening,
-            _completedSession,
-        ) { current, past, simulating, listening, completed ->
-            SessionPack(current, past, simulating, listening, completed)
-        },
+        CprRepository.currentSession,
+        CprRepository.pastSessions,
+        CprRepository.simulating,
+        CprRepository.listening,
+        _completedSession,
         connectionMonitor.state,
-    ) { pack, connection ->
-        val screen = when {
-            pack.current != null -> ScreenState.LIVE
-            pack.completed != null -> ScreenState.SCORECARD
+        _screenOverride,
+        _selectedHistorySession
+    ) { values ->
+        val current = values[0] as CprSession?
+        val past = @Suppress("UNCHECKED_CAST") (values[1] as List<CprSession>)
+        val simulating = values[2] as Boolean
+        val listening = values[3] as Boolean
+        val completed = values[4] as CprSession?
+        val connection = values[5] as WatchConnectionState
+        val override = values[6] as ScreenState?
+        val historySession = values[7] as CprSession?
+
+        val screen = override ?: when {
+            current != null -> ScreenState.LIVE
+            completed != null -> ScreenState.SCORECARD
             else -> ScreenState.IDLE
         }
         MobileUiState(
             screen = screen,
-            currentSession = pack.current,
-            completedSession = pack.completed,
-            pastSessions = pack.past,
-            latestEvent = pack.current?.compressionEvents?.lastOrNull(),
-            isSimulating = pack.simulating,
-            isListening = pack.listening,
+            currentSession = current,
+            completedSession = completed,
+            pastSessions = past,
+            latestEvent = current?.compressionEvents?.lastOrNull(),
+            isSimulating = simulating,
+            isListening = listening,
             watchConnected = connection.isConnected,
             watchName = connection.watchName,
+            selectedHistorySession = historySession
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), MobileUiState())
-
-    private data class SessionPack(
-        val current: CprSession?,
-        val past: List<CprSession>,
-        val simulating: Boolean,
-        val listening: Boolean,
-        val completed: CprSession?,
-    )
 
     fun startSession() {
         _completedSession.value = null
@@ -98,6 +101,26 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
 
     fun dismissScorecard() {
         _completedSession.value = null
+        _screenOverride.value = null
+    }
+
+    fun showHistory() {
+        _screenOverride.value = ScreenState.HISTORY
+    }
+
+    fun showHistoryDetail(session: CprSession) {
+        _selectedHistorySession.value = session
+        _screenOverride.value = ScreenState.HISTORY_DETAIL
+    }
+
+    fun backFromHistory() {
+        _screenOverride.value = null
+        _selectedHistorySession.value = null
+    }
+
+    fun backFromHistoryDetail() {
+        _screenOverride.value = ScreenState.HISTORY
+        _selectedHistorySession.value = null
     }
 
     fun startSimulation() {

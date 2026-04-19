@@ -1,5 +1,6 @@
 package com.hackathon.cprwatch.mobile
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -8,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -72,6 +74,8 @@ fun ScorecardScreen(
     session: CprSession?,
     onDismiss: () -> Unit
 ) {
+    BackHandler { onDismiss() }
+
     val events = session?.compressionEvents ?: emptyList()
     if (events.isEmpty()) { onDismiss(); return }
 
@@ -114,10 +118,13 @@ fun ScorecardScreen(
         else -> heuristicSummary
     }
 
+    val avgDepthMm = scorecard.avgDepthMm
+
     Surface(modifier = Modifier.fillMaxSize(), color = DarkBg) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .systemBarsPadding()
                 .verticalScroll(rememberScrollState())
                 .padding(20.dp)
         ) {
@@ -179,6 +186,27 @@ fun ScorecardScreen(
             Text("Rate over time", fontSize = 14.sp, color = Color.White, fontWeight = FontWeight.Medium)
             Spacer(modifier = Modifier.height(8.dp))
             AnnotatedRateChart(events = events, durationSec = scorecard.sessionDurationSec)
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Depth over time", fontSize = 14.sp, color = Color.White, fontWeight = FontWeight.Medium)
+                Text(
+                    text = "avg %.0f mm".format(avgDepthMm),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = when {
+                        avgDepthMm in 50.0..60.0 -> Color(0xFFFF9800)
+                        else -> GradeRed
+                    }
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            CompressionDepthChart(events = events, modifier = Modifier.fillMaxWidth())
 
             Spacer(modifier = Modifier.height(24.dp))
 

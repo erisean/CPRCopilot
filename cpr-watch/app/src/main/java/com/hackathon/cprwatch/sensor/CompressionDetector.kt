@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlin.math.abs
-import kotlin.math.min
+import kotlin.math.max
 import kotlin.math.sqrt
 
 data class CompressionMetrics(
@@ -84,6 +84,8 @@ class CompressionDetector(context: Context) : SensorEventListener {
     private var minDisplacement = 0f  // most negative = deepest point
     private var downstrokeStartMs = 0L
     private var peakNegativeAccel = 0f  // strongest downward force this cycle
+    private var phaseEnteredMs = 0L
+    private var lastActivityMs = 0L
 
     // Rate tracking
     private var compressionIdx = 0
@@ -98,8 +100,10 @@ class CompressionDetector(context: Context) : SensorEventListener {
     private val downstrokeThreshold = -2.0f   // m/s² — negative = pushing down
     private val recoilThreshold = 0.5f         // m/s² — positive = moving up
     private val velocityNearZero = 0.3f        // m/s — cycle boundary
-    private val minCompressionIntervalMs = 350L
+    private val minCompressionIntervalMs = 150L
     private val idleTimeoutMs = 3000L
+    private val maxPhaseDurationMs = 1500L
+    private val motionActivityThreshold = 0.8f
 
     // AHA guidelines
     private val targetRateMin = 100
@@ -125,6 +129,8 @@ class CompressionDetector(context: Context) : SensorEventListener {
         minDisplacement = 0f
         downstrokeStartMs = 0L
         peakNegativeAccel = 0f
+        phaseEnteredMs = 0L
+        lastActivityMs = 0L
         compressionIdx = 0
         lastCompressionMs = 0L
         compressionTimestamps.clear()
@@ -195,6 +201,10 @@ class CompressionDetector(context: Context) : SensorEventListener {
             timestampMs = currentTimeMs
         )
 
+        if (accelMagnitude > motionActivityThreshold) {
+            lastActivityMs = currentTimeMs
+        }
+
         // State machine for compression cycle detection
         when (phase) {
             CyclePhase.IDLE -> {
@@ -202,6 +212,7 @@ class CompressionDetector(context: Context) : SensorEventListener {
                     val timeSinceLast = currentTimeMs - lastCompressionMs
                     if (lastCompressionMs == 0L || timeSinceLast > minCompressionIntervalMs) {
                         phase = CyclePhase.DOWNSTROKE
+                        phaseEnteredMs = currentTimeMs
                         downstrokeStartMs = currentTimeMs
                         velocity = 0f
                         displacement = 0f
@@ -225,6 +236,7 @@ class CompressionDetector(context: Context) : SensorEventListener {
                 // Transition to recoil when acceleration goes positive
                 if (verticalAccel > recoilThreshold) {
                     phase = CyclePhase.RECOIL
+                    phaseEnteredMs = currentTimeMs
                 }
             }
 
@@ -234,29 +246,32 @@ class CompressionDetector(context: Context) : SensorEventListener {
 
                 // Compression complete when velocity returns near zero
                 // (hands momentarily stationary between compressions)
-                if (abs(velocity) < velocityNearZero && displacement > minDisplacement) {
+                if (abs(velocity) < velocityNearZero) { //&& displacement > minDisplacement) {
                     onCompressionComplete(currentTimeMs)
                     phase = CyclePhase.IDLE
+                    phaseEnteredMs = currentTimeMs
                 }
             }
         }
 
-        // Idle timeout
-        if (lastCompressionMs > 0 && (currentTimeMs - lastCompressionMs) > idleTimeoutMs) {
-            if (phase != CyclePhase.IDLE) {
-                phase = CyclePhase.IDLE
-                velocity = 0f
-                displacement = 0f
-            }
-            _metrics.value = _metrics.value.copy(
-                isCompressing = false,
-                feedback = CompressionFeedback.IDLE
-            )
+        // Recovery timeouts:
+        // 1) Reset if a phase lasts too long without completing.
+        // 2) Reset after inactivity based on real motion/compression activity.
+        val stuckPhase = phase != CyclePhase.IDLE &&
+            phaseEnteredMs > 0L &&
+            (currentTimeMs - phaseEnteredMs) > maxPhaseDurationMs
+        val inactivitySince = max(lastActivityMs, lastCompressionMs)
+        val inactiveTooLong = inactivitySince > 0L && (currentTimeMs - inactivitySince) > idleTimeoutMs
+
+        if (stuckPhase || inactiveTooLong) {
+            resetCycleState()
+            _metrics.value = CompressionMetrics()
         }
     }
 
     private fun onCompressionComplete(timestampMs: Long) {
         compressionIdx++
+        lastActivityMs = timestampMs
 
         val intervalMs = if (lastCompressionMs > 0) (timestampMs - lastCompressionMs).toInt() else 545
         lastCompressionMs = timestampMs
@@ -317,6 +332,19 @@ class CompressionDetector(context: Context) : SensorEventListener {
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+
+    private fun resetCycleState() {
+        phase = CyclePhase.IDLE
+        phaseEnteredMs = 0L
+        velocity = 0f
+        displacement = 0f
+        minDisplacement = 0f
+        downstrokeStartMs = 0L
+        peakNegativeAccel = 0f
+        lastCompressionMs = 0L
+        compressionTimestamps.clear()
+        recentIntervals.clear()
+    }
 
     private fun pruneOldTimestamps(currentTimeMs: Long) {
         compressionTimestamps.removeAll { currentTimeMs - it > 10_000L }
