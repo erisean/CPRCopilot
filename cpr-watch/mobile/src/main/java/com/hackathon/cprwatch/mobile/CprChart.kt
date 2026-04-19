@@ -74,6 +74,61 @@ fun CompressionRateChart(
     }
 }
 
+@Composable
+fun CompressionDepthChart(
+    events: List<CompressionEvent>,
+    modifier: Modifier = Modifier
+) {
+    Canvas(
+        modifier = modifier
+            .height(120.dp)
+            .padding(horizontal = 4.dp)
+    ) {
+        if (events.isEmpty()) return@Canvas
+
+        val minValue = 0f
+        val maxValue = 80f
+        val range = maxValue - minValue
+        val bandTopY = size.height * (1 - (60f - minValue) / range)
+        val bandBottomY = size.height * (1 - (50f - minValue) / range)
+
+        drawRect(
+            color = Color(0x1AFF9800),
+            topLeft = Offset(0f, bandTopY),
+            size = androidx.compose.ui.geometry.Size(size.width, bandBottomY - bandTopY)
+        )
+
+        drawDashedLine(bandTopY, Color(0xFFFF9800).copy(alpha = 0.3f))
+        drawDashedLine(bandBottomY, Color(0xFFFF9800).copy(alpha = 0.3f))
+
+        if (events.size < 2) return@Canvas
+
+        val path = Path()
+        val xStep = size.width / (events.size - 1).coerceAtLeast(1)
+
+        events.forEachIndexed { i, event ->
+            val value = event.estimatedDepthMm.coerceIn(minValue, maxValue)
+            val x = i * xStep
+            val y = size.height * (1 - (value - minValue) / range)
+            if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+        }
+
+        drawPath(path, Color(0xFFFFB74D), style = Stroke(width = 2.5.dp.toPx()))
+
+        events.forEachIndexed { i, event ->
+            val value = event.estimatedDepthMm.coerceIn(minValue, maxValue)
+            val x = i * xStep
+            val y = size.height * (1 - (value - minValue) / range)
+            val inBand = value in 50f..60f
+            drawCircle(
+                color = if (inBand) Color(0xFFFF9800) else Color(0xFFF44336),
+                radius = 2.dp.toPx(),
+                center = Offset(x, y)
+            )
+        }
+    }
+}
+
 private fun DrawScope.drawDashedLine(y: Float, color: Color) {
     val dashWidth = 8.dp.toPx()
     val gapWidth = 4.dp.toPx()

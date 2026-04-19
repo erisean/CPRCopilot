@@ -35,6 +35,7 @@ import com.hackathon.cprwatch.shared.CprSession
 
 private val DarkBg = Color(0xFF0D0D0D)
 private val CardBg = Color(0xFF1A1A1A)
+private val DimText = Color(0xFF6B6B6B)
 private val Green = Color(0xFF4CAF50)
 private val Red = Color(0xFFF44336)
 private val Orange = Color(0xFFFF9800)
@@ -48,6 +49,7 @@ fun LiveSessionScreen(
     val events = session?.compressionEvents ?: emptyList()
     val rate = latestEvent?.rollingRateBpm?.toInt() ?: 0
     val instruction = latestEvent?.instruction ?: "none"
+    val currentDepthMm = latestEvent?.estimatedDepthMm ?: 0f
 
     val status = when {
         rate == 0 -> RateStatus.WAITING
@@ -78,7 +80,7 @@ fun LiveSessionScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp)
+                .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
             // Header
             Row(
@@ -89,17 +91,12 @@ fun LiveSessionScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
-                            .width(10.dp)
-                            .height(10.dp)
-                            .background(Green, RoundedCornerShape(5.dp))
+                            .width(8.dp)
+                            .height(8.dp)
+                            .background(Green, RoundedCornerShape(4.dp))
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "LIVE SESSION",
-                        color = Green,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp
-                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("LIVE SESSION", color = Green, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                 }
                 OutlinedButton(
                     onClick = onStopSession,
@@ -107,38 +104,63 @@ fun LiveSessionScreen(
                     border = androidx.compose.foundation.BorderStroke(1.dp, Red.copy(alpha = 0.5f)),
                     shape = RoundedCornerShape(20.dp)
                 ) {
-                    Text("End Session", fontSize = 12.sp)
+                    Text("End Session", fontSize = 11.sp)
                 }
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-            // Status badge + BPM hero
+            // BPM hero — compact with badge inline
             HeroBpm(rate = rate, status = status)
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             // Rate chart
-            Text(
-                text = "Rate Over Time",
-                fontSize = 13.sp,
-                color = Color(0xFF6B6B6B),
-                modifier = Modifier.padding(start = 4.dp)
-            )
-            Spacer(modifier = Modifier.height(4.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Rate", fontSize = 11.sp, color = DimText)
+                Text("target 100–120", fontSize = 10.sp, color = DimText)
+            }
+            Spacer(modifier = Modifier.height(2.dp))
             CompressionRateChart(events = events, modifier = Modifier.fillMaxWidth())
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Depth chart
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Depth", fontSize = 11.sp, color = DimText)
+                Text(
+                    text = if (currentDepthMm > 0) "%.0f mm".format(currentDepthMm) else "--",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = when {
+                        currentDepthMm == 0f -> Color.Gray
+                        currentDepthMm in 50f..60f -> Orange
+                        else -> Red
+                    }
+                )
+            }
+            Spacer(modifier = Modifier.height(2.dp))
+            CompressionDepthChart(events = events, modifier = Modifier.fillMaxWidth())
+
+            Spacer(modifier = Modifier.height(10.dp))
 
             // Stats grid
             StatsGrid(events = events)
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             // Guidance bar
             GuidanceBar(feedback = feedback, status = status)
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(8.dp))
         }
     }
 }
@@ -165,39 +187,28 @@ private enum class RateStatus {
 private fun HeroBpm(rate: Int, status: RateStatus) {
     val badgeColor by animateColorAsState(targetValue = status.color, label = "badge")
 
-    Column(
+    Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.CenterHorizontally
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
     ) {
         Box(
             modifier = Modifier
-                .background(badgeColor.copy(alpha = 0.15f), RoundedCornerShape(20.dp))
-                .padding(horizontal = 20.dp, vertical = 6.dp)
+                .background(badgeColor.copy(alpha = 0.15f), RoundedCornerShape(16.dp))
+                .padding(horizontal = 12.dp, vertical = 4.dp)
         ) {
-            Text(
-                text = status.label,
-                color = badgeColor,
-                fontWeight = FontWeight.Bold,
-                fontSize = 14.sp
-            )
+            Text(status.label, color = badgeColor, fontWeight = FontWeight.Bold, fontSize = 12.sp)
         }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
+        Spacer(modifier = Modifier.width(16.dp))
         Text(
             text = if (rate > 0) "$rate" else "--",
-            fontSize = 96.sp,
+            fontSize = 64.sp,
             fontWeight = FontWeight.Bold,
             color = Color.White,
-            lineHeight = 96.sp
+            lineHeight = 64.sp
         )
-
-        Text(
-            text = "BPM",
-            fontSize = 18.sp,
-            color = Color(0xFF6B6B6B),
-            fontWeight = FontWeight.Medium
-        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text("BPM", fontSize = 14.sp, color = DimText, fontWeight = FontWeight.Medium)
     }
 }
 
@@ -253,7 +264,7 @@ private fun StatCard(
         colors = CardDefaults.cardColors(containerColor = CardBg)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text(text = label, fontSize = 11.sp, color = Color(0xFF6B6B6B), letterSpacing = 0.3.sp)
+            Text(text = label, fontSize = 11.sp, color = DimText, letterSpacing = 0.3.sp)
             Spacer(modifier = Modifier.height(6.dp))
             Text(text = value, fontSize = 28.sp, fontWeight = FontWeight.Bold, color = valueColor)
         }
@@ -265,24 +276,21 @@ private fun GuidanceBar(feedback: String, status: RateStatus) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(status.color.copy(alpha = 0.12f), RoundedCornerShape(12.dp))
-            .padding(vertical = 16.dp),
+            .background(status.color.copy(alpha = 0.12f), RoundedCornerShape(10.dp))
+            .padding(vertical = 10.dp),
         contentAlignment = Alignment.Center
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Text("GUIDANCE", fontSize = 9.sp, color = DimText, letterSpacing = 1.sp)
+            Spacer(modifier = Modifier.width(10.dp))
             Text(
-                text = "CURRENT GUIDANCE",
-                fontSize = 10.sp,
-                color = Color(0xFF6B6B6B),
-                letterSpacing = 1.sp
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = feedback.ifEmpty { "Waiting for compressions..." },
-                fontSize = 20.sp,
+                text = feedback.ifEmpty { "Waiting..." },
+                fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
-                color = status.color,
-                textAlign = TextAlign.Center
+                color = status.color
             )
         }
     }
