@@ -48,35 +48,17 @@ class SurfaceCalibrator(
             .drop(1)
             .dropLast(1)
 
-        val avgDepthM = trimmed.map { it.depthMm / 1000f }.average().toFloat()
+        val avgDepthMm = trimmed.map { it.depthMm }.average().toFloat()
         val avgPeakAccel = trimmed.map { it.peakAccelMps2 }.average().toFloat()
 
-        // F = m * a, estimate effective mass from target force and measured acceleration
-        // k = F / d (spring constant, N/m)
-        // For the measured compressions: F_measured ≈ effective_mass * avgPeakAccel
-        // We don't know exact mass, so we use ratio approach:
-        //   stiffness = avgPeakAccel / avgDepthM  (accel per meter of displacement)
-        val stiffness = if (avgDepthM > 0.001f) avgPeakAccel / avgDepthM else 1f
+        val stiffness = if (avgDepthMm > 1f) avgPeakAccel / (avgDepthMm / 1000f) else 1f
 
-        // Target depth for this surface = targetAccel / stiffness
-        // Target accel for CPR: ~50kg * 9.81 / bodyMass ≈ use measured ratio
-        // Scale the AHA target (50-60mm on a chest) to this surface
-        // On a standard chest: stiffness_chest ≈ typical_peak_accel / 0.055m
-        // Ratio: targetDepth_surface = targetDepth_chest * (stiffness_chest / stiffness_surface)
-        // Simpler: use the force-depth relationship directly
-        //   target depth = target_force / (stiffness * effective_mass)
-        // Since stiffness = accel/depth, target_accel maps to target_depth = target_accel / stiffness
-
-        // Reference: on a real chest, ~8-12 m/s² peak accel produces 50-60mm depth
-        val refAccelMin = 8f
-        val refAccelMax = 12f
-
-        val targetDepthMin = (refAccelMin / stiffness * 1000f).coerceIn(10f, 300f)
-        val targetDepthMax = (refAccelMax / stiffness * 1000f).coerceIn(15f, 350f)
+        val targetDepthMin = (avgDepthMm * 0.85f).coerceAtLeast(10f)
+        val targetDepthMax = (avgDepthMm * 1.15f).coerceAtLeast(15f)
 
         val label = when {
-            avgDepthM * 1000f < 30f -> "Firm surface"
-            avgDepthM * 1000f < 80f -> "Medium surface"
+            avgDepthMm < 30f -> "Firm surface"
+            avgDepthMm < 80f -> "Medium surface"
             else -> "Soft surface"
         }
 
@@ -84,13 +66,13 @@ class SurfaceCalibrator(
             stiffness = stiffness,
             targetDepthMinMm = targetDepthMin,
             targetDepthMaxMm = targetDepthMax,
-            targetPeakAccelMin = refAccelMin,
-            targetPeakAccelMax = refAccelMax,
+            targetPeakAccelMin = avgPeakAccel * 0.85f,
+            targetPeakAccelMax = avgPeakAccel * 1.15f,
             surfaceLabel = label
         )
 
-        Log.i(TAG, "Surface calibrated: $label, stiffness=%.1f, targetDepth=%.0f-%.0fmm, avgMeasuredDepth=%.1fmm, avgPeakAccel=%.2f"
-            .format(stiffness, targetDepthMin, targetDepthMax, avgDepthM * 1000f, avgPeakAccel))
+        Log.i(TAG, "Surface calibrated: $label, targetDepth=%.0f-%.0fmm, avgDepth=%.1fmm, avgPeakAccel=%.2f"
+            .format(targetDepthMin, targetDepthMax, avgDepthMm, avgPeakAccel))
     }
 
     fun reset() {
