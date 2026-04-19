@@ -1,9 +1,29 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.plugin.serialization")
 }
+
+private fun loadLocalProperties(): Properties {
+    val props = Properties()
+    val rootDir = rootProject.projectDir
+    val monorepoRoot = rootDir.parentFile?.resolve("local.properties")
+    if (monorepoRoot != null && monorepoRoot.exists()) {
+        FileInputStream(monorepoRoot).use { props.load(it) }
+    }
+    val localFile = rootDir.resolve("local.properties")
+    if (localFile.exists()) FileInputStream(localFile).use { props.load(it) }
+    return props
+}
+
+private fun escapeBuildConfigValue(value: String): String =
+    value.replace("\\", "\\\\").replace("\"", "\\\"")
+
+private val localPropertiesForKeys: Properties by lazy { loadLocalProperties() }
 
 android {
     namespace = "com.hackathon.cprwatch.mobile"
@@ -17,16 +37,6 @@ android {
         versionName = "1.0"
     }
 
-    buildTypes {
-        release {
-            isMinifyEnabled = false
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
-        }
-    }
-
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -38,6 +48,36 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
+    }
+
+    buildTypes {
+        debug {
+            val raw = localPropertiesForKeys.getProperty("ANTHROPIC_API_KEY", "").trim()
+                .removeSurrounding("\"")
+            buildConfigField(
+                "String",
+                "ANTHROPIC_API_KEY",
+                "\"${escapeBuildConfigValue(raw)}\""
+            )
+            val modelRaw = localPropertiesForKeys.getProperty("ANTHROPIC_MODEL", "").trim()
+                .removeSurrounding("\"")
+            val modelForBuild = modelRaw.ifEmpty { "claude-sonnet-4-6" }
+            buildConfigField(
+                "String",
+                "ANTHROPIC_MODEL",
+                "\"${escapeBuildConfigValue(modelForBuild)}\""
+            )
+        }
+        release {
+            isMinifyEnabled = false
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+            buildConfigField("String", "ANTHROPIC_API_KEY", "\"\"")
+            buildConfigField("String", "ANTHROPIC_MODEL", "\"\"")
+        }
     }
 }
 
@@ -56,5 +96,6 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

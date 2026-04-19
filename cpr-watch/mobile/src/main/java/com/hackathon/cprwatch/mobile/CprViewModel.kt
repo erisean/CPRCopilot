@@ -17,24 +17,26 @@ import kotlinx.coroutines.launch
 import kotlin.math.sin
 import kotlin.random.Random
 
-enum class ScreenState { IDLE, LIVE, SCORECARD }
+enum class ScreenState { IDLE, LIVE, SCORECARD, AI_COACH }
 
 data class MobileUiState(
     val screen: ScreenState = ScreenState.IDLE,
     val currentSession: CprSession? = null,
     val completedSession: CprSession? = null,
+    val coachInsightsSession: CprSession? = null,
     val pastSessions: List<CprSession> = emptyList(),
     val latestEvent: CompressionEvent? = null,
     val isSimulating: Boolean = false,
     val isListening: Boolean = false,
     val watchConnected: Boolean = false,
-    val watchName: String? = null
+    val watchName: String? = null,
 )
 
 class CprViewModel(application: Application) : AndroidViewModel(application) {
 
     private var simulationJob: Job? = null
     private val _completedSession = MutableStateFlow<CprSession?>(null)
+    private val _coachInsightsSession = MutableStateFlow<CprSession?>(null)
     private val connectionMonitor = WatchConnectionMonitor(application)
 
     init {
@@ -44,45 +46,59 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     val uiState: StateFlow<MobileUiState> = combine(
-        CprRepository.currentSession,
-        CprRepository.pastSessions,
-        CprRepository.simulating,
-        CprRepository.listening,
-        _completedSession,
-        connectionMonitor.state
-    ) { values ->
-        val current = values[0] as CprSession?
-        val past = @Suppress("UNCHECKED_CAST") (values[1] as List<CprSession>)
-        val simulating = values[2] as Boolean
-        val listening = values[3] as Boolean
-        val completed = values[4] as CprSession?
-        val connection = values[5] as WatchConnectionState
-
+        combine(
+            combine(
+                CprRepository.currentSession,
+                CprRepository.pastSessions,
+                CprRepository.simulating,
+                CprRepository.listening,
+                _completedSession,
+            ) { current, past, simulating, listening, completed ->
+                SessionPack(current, past, simulating, listening, completed)
+            },
+            _coachInsightsSession,
+        ) { pack, coachSession -> pack to coachSession },
+        connectionMonitor.state,
+    ) { packAndCoach, connection ->
+        val pack = packAndCoach.first
+        val coachSession = packAndCoach.second
         val screen = when {
-            current != null -> ScreenState.LIVE
-            completed != null -> ScreenState.SCORECARD
+            coachSession != null -> ScreenState.AI_COACH
+            pack.current != null -> ScreenState.LIVE
+            pack.completed != null -> ScreenState.SCORECARD
             else -> ScreenState.IDLE
         }
         MobileUiState(
             screen = screen,
-            currentSession = current,
-            completedSession = completed,
-            pastSessions = past,
-            latestEvent = current?.compressionEvents?.lastOrNull(),
-            isSimulating = simulating,
-            isListening = listening,
+            currentSession = pack.current,
+            completedSession = pack.completed,
+            coachInsightsSession = coachSession,
+            pastSessions = pack.past,
+            latestEvent = pack.current?.compressionEvents?.lastOrNull(),
+            isSimulating = pack.simulating,
+            isListening = pack.listening,
             watchConnected = connection.isConnected,
-            watchName = connection.watchName
+            watchName = connection.watchName,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), MobileUiState())
 
+    private data class SessionPack(
+        val current: CprSession?,
+        val past: List<CprSession>,
+        val simulating: Boolean,
+        val listening: Boolean,
+        val completed: CprSession?,
+    )
+
     fun startSession() {
         _completedSession.value = null
+        _coachInsightsSession.value = null
         CprRepository.startListening()
         CprRepository.startSession()
     }
 
     fun stopSession() {
+        _coachInsightsSession.value = null
         _completedSession.value = CprRepository.currentSession.value
         CprRepository.endSession()
         CprRepository.stopListening()
@@ -92,19 +108,29 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun dismissScorecard() {
+        _coachInsightsSession.value = null
         _completedSession.value = null
+    }
+
+    fun dismissCoachInsights() {
+        _coachInsightsSession.value = null
+    }
+
+    /** Opens coach screen for any [CprSession] (e.g. latest from idle history). */
+    fun presentCoachInsights(session: CprSession) {
+        _coachInsightsSession.value = session
     }
 
     fun startSimulation() {
         if (simulationJob?.isActive == true) return
         _completedSession.value = null
+        _coachInsightsSession.value = null
         CprRepository.setSimulating(true)
         CprRepository.startListening()
         CprRepository.startSession()
 
         simulationJob = viewModelScope.launch {
             var count = 0
-            var lastMs = System.currentTimeMillis()
             while (isActive) {
                 count++
                 val now = System.currentTimeMillis()
@@ -146,11 +172,10 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
                             "faster", "slower" -> 2
                             "push_harder", "ease_up" -> 3
                             else -> null
-                        }
-                    )
+                        },
+                    ),
                 )
 
-                lastMs = now
                 delay(intervalMs.toLong())
             }
         }
