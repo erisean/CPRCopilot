@@ -67,6 +67,7 @@ class MainActivity : ComponentActivity(), MessageClient.OnMessageReceivedListene
                         )
                         ScreenState.SCORECARD -> ScorecardScreen(
                             session = state.completedSession,
+                            surfaceProfile = state.surfaceProfile,
                             onDismiss = { viewModel.dismissScorecard() }
                         )
                         ScreenState.HISTORY -> SessionHistoryScreen(

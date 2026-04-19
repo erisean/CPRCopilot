@@ -179,7 +179,7 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
 
                 val intervalMs = (545 + Random.nextInt(-20, 21))
                 val rate = (110 + rateDrift + Random.nextInt(-3, 4)).coerceIn(80, 140)
-                val depthMm = (55f + depthDrift + Random.nextFloat() * 4f - 2f).coerceIn(20f, 80f)
+                val depthMm = (55f + depthDrift * 3f + Random.nextFloat() * 30f - 15f).coerceIn(10f, 150f)
                 val recoilPct = (97f + Random.nextFloat() * 4f - 2f).coerceIn(80f, 100f)
 
                 val instruction = when {

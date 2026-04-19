@@ -89,7 +89,8 @@ fun CompressionDepthChart(
         if (events.isEmpty()) return@Canvas
 
         val minValue = 0f
-        val maxValue = (targetMaxMm * 1.5f).coerceAtLeast(80f)
+        val peakDepth = events.maxOf { it.estimatedDepthMm }
+        val maxValue = maxOf(targetMaxMm * 1.5f, peakDepth * 1.15f, 80f)
         val range = maxValue - minValue
         if (events.size < 2) return@Canvas
 
