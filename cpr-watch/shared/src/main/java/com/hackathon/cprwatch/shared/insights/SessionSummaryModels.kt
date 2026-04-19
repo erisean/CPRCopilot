@@ -45,8 +45,21 @@ data class RescuerHrSummary(
     val peak: Int
 )
 
+/** One downsampled time bin for Claude (rolling rate, mechanics, optional HR). */
+data class PerformanceHrSeriesPoint(
+    /** Seconds from session start (bin center). */
+    val tSec: Float,
+    val rollingRateBpm: Float,
+    val depthMm: Float,
+    val recoilPct: Float,
+    /** Mean rescuer HR among samples in the bin; null if none. */
+    val rescuerHrBpm: Int?,
+)
+
 data class SessionSummary(
     val totalCompressions: Int,
+    /** Compressions where `rescuerHrBpm != null && rescuerHrBpm > 0`. */
+    val rescuerHrSampleCount: Int,
     val durationSec: Float,
     val rate: RateStats,
     val depth: DepthStats,
@@ -56,5 +69,7 @@ data class SessionSummary(
     val rescuerHr: RescuerHrSummary,
     val timeWindows: List<TimeWindowBucket>,
     val instructionsIssued: Map<String, Int>,
-    val pctAllGuidelinesMet: Float
+    val pctAllGuidelinesMet: Float,
+    /** Downsampled time series for narrative fatigue/performance analysis (not for quoting numbers). */
+    val performanceHrSeries: List<PerformanceHrSeriesPoint>,
 )
