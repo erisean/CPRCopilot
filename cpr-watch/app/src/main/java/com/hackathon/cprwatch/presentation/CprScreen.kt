@@ -139,6 +139,8 @@ private fun ActiveScreen(state: CprUiState, onStop: () -> Unit) {
             )
         }
 
+        Spacer(modifier = Modifier.height(4.dp))
+
         StatBox(
            // title = "Depth Guide",
             value = depthGuide(state.depthGuidanceFeedback),

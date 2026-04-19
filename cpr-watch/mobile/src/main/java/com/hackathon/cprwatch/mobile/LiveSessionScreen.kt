@@ -166,15 +166,24 @@ fun LiveSessionScreen(
                     text = if (currentDepthMm > 0) "%.0f mm".format(currentDepthMm) else "--",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
-                    color = when {
-                        currentDepthMm == 0f -> Color.Gray
-                        currentDepthMm in 50f..60f -> Orange
-                        else -> Red
+                    color = run {
+                        val tMin = surfaceProfile?.targetDepthMinMm ?: 50f
+                        val tMax = surfaceProfile?.targetDepthMaxMm ?: 60f
+                        when {
+                            currentDepthMm == 0f -> Color.Gray
+                            currentDepthMm in tMin..tMax -> Orange
+                            else -> Red
+                        }
                     }
                 )
             }
             Spacer(modifier = Modifier.height(2.dp))
-            CompressionDepthChart(events = events, modifier = Modifier.fillMaxWidth())
+            CompressionDepthChart(
+                events = events,
+                modifier = Modifier.fillMaxWidth(),
+                targetMinMm = surfaceProfile?.targetDepthMinMm ?: 50f,
+                targetMaxMm = surfaceProfile?.targetDepthMaxMm ?: 60f
+            )
 
             Spacer(modifier = Modifier.height(8.dp))
 
