@@ -153,6 +153,8 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun resultToEvent(result: CompressionResult): CompressionEvent {
         val feedback = _uiState.value.feedback
+        // Watch: [CompressionDetector] never filled HR; sensor stream is [HeartRateMonitor.heartRate].
+        val rescuerHrBpm = (result.rescuerHrBpm ?: heartRateMonitor.heartRate.value).takeIf { it > 0 }
         return CompressionEvent(
             compressionIdx = result.compressionIdx,
             timestampMs = result.timestampMs,
@@ -165,7 +167,7 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
             dutyCycle = result.dutyCycle,
             peakAccelMps2 = result.peakAccel,
             wristAngleDeg = 0f,
-            rescuerHrBpm = result.rescuerHrBpm,
+            rescuerHrBpm = rescuerHrBpm,
             isQualityGood = feedback == CompressionFeedback.GOOD,
             instruction = when (feedback) {
                 CompressionFeedback.GOOD -> "none"
