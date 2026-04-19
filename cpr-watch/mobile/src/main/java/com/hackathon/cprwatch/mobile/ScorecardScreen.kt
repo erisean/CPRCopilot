@@ -59,6 +59,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.PI
+import kotlin.math.roundToInt
 import kotlin.math.sin
 import com.hackathon.cprwatch.shared.CompressionEvent
 import com.hackathon.cprwatch.shared.CprSession
@@ -71,6 +72,8 @@ private val GradeGreen = Color(0xFF6EE7A0)
 private val GradeBlue = Color(0xFF85B7EB)
 private val GradeAmber = Color(0xFFF5A623)
 private val GradeRed = Color(0xFFE24B4A)
+/** Rescuer HR trend on scorecard (distinct from grade blue). */
+private val RescuerHrLightBlue = Color(0xFF81D4FA)
 
 private data class GradeInfo(val letter: String, val color: Color, val label: String)
 
@@ -130,6 +133,9 @@ fun ScorecardScreen(
     }
 
     val avgDepthMm = scorecard.avgDepthMm
+    val rescuerHrSamples = remember(events) {
+        events.mapNotNull { it.rescuerHrBpm?.takeIf { b -> b > 0 } }
+    }
 
     Surface(modifier = Modifier.fillMaxSize(), color = DarkBg) {
         Column(
@@ -228,6 +234,25 @@ fun ScorecardScreen(
             Text("Time breakdown", fontSize = 14.sp, color = Color.White, fontWeight = FontWeight.Medium)
             Spacer(modifier = Modifier.height(12.dp))
             TimeBreakdown(scorecard)
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Heart rate over time", fontSize = 14.sp, color = Color.White, fontWeight = FontWeight.Medium)
+                Text(
+                    text = if (rescuerHrSamples.isEmpty()) "avg —"
+                    else "avg %d bpm".format((rescuerHrSamples.sum().toDouble() / rescuerHrSamples.size).toInt()),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = RescuerHrLightBlue,
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            AnnotatedRescuerHrChart(events = events, durationSec = scorecard.sessionDurationSec)
 
             Spacer(modifier = Modifier.height(32.dp))
 
@@ -533,6 +558,121 @@ private fun AnnotatedRateChart(events: List<CompressionEvent>, durationSec: Long
 }
 
 @Composable
+private fun AnnotatedRescuerHrChart(events: List<CompressionEvent>, durationSec: Long) {
+    val series = remember(events) { forwardFilledRescuerHr(events) }
+    val textMeasurer = rememberTextMeasurer()
+
+    when {
+        series == null -> {
+            Box(modifier = Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
+                Text("No rescuer heart rate recorded", fontSize = 13.sp, color = DimText)
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+        events.size < 2 -> {
+            Box(modifier = Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
+                Text("Heart rate chart needs at least two compressions.", fontSize = 13.sp, color = DimText)
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+        else -> {
+            Canvas(modifier = Modifier.fillMaxWidth().height(160.dp)) {
+                val dataMin = series.minOrNull()!!
+                val dataMax = series.maxOrNull()!!
+                var minV = dataMin - 10f
+                var maxV = dataMax + 20f
+                if (maxV <= minV) {
+                    val pad = 20f
+                    minV -= pad
+                    maxV += pad
+                }
+                var range = maxV - minV
+                if (range < 20f) {
+                    val mid = (minV + maxV) / 2f
+                    minV = mid - 10f
+                    maxV = mid + 10f
+                    range = maxV - minV
+                }
+
+                fun yForBpm(bpm: Float): Float =
+                    size.height * (1 - (bpm - minV) / range)
+
+                val midBpm = (minV + maxV) / 2f
+                drawDashedLine(yForBpm(midBpm), RescuerHrLightBlue.copy(alpha = 0.18f))
+
+                val topLabel = textMeasurer.measure(maxV.roundToInt().toString(), TextStyle(fontSize = 9.sp))
+                drawText(topLabel, DimText, Offset(-2f, yForBpm(maxV) - topLabel.size.height / 2))
+                val midLabel = textMeasurer.measure(midBpm.roundToInt().toString(), TextStyle(fontSize = 9.sp))
+                drawText(midLabel, DimText, Offset(-2f, yForBpm(midBpm) - midLabel.size.height / 2))
+                val botLabel = textMeasurer.measure(minV.roundToInt().toString(), TextStyle(fontSize = 9.sp))
+                drawText(botLabel, DimText, Offset(-2f, yForBpm(minV) - botLabel.size.height / 2))
+
+                val path = Path()
+                val fillPath = Path()
+                val xStep = size.width / (events.size - 1).coerceAtLeast(1)
+
+                series.forEachIndexed { i, raw ->
+                    val v = raw.coerceIn(minV, maxV)
+                    val x = i * xStep
+                    val y = yForBpm(v)
+                    if (i == 0) {
+                        path.moveTo(x, y)
+                        fillPath.moveTo(x, y)
+                    } else {
+                        path.lineTo(x, y)
+                        fillPath.lineTo(x, y)
+                    }
+                }
+                fillPath.lineTo((events.size - 1) * xStep, size.height)
+                fillPath.lineTo(0f, size.height)
+                fillPath.close()
+
+                drawPath(
+                    fillPath,
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            RescuerHrLightBlue.copy(alpha = 0.30f),
+                            RescuerHrLightBlue.copy(alpha = 0.04f),
+                        ),
+                        startY = 0f,
+                        endY = size.height,
+                    ),
+                )
+                drawPath(
+                    path,
+                    RescuerHrLightBlue,
+                    style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round),
+                )
+
+                events.forEachIndexed { i, e ->
+                    val hr = e.rescuerHrBpm?.takeIf { it > 0 } ?: return@forEachIndexed
+                    val v = hr.toFloat().coerceIn(minV, maxV)
+                    val x = i * xStep
+                    val y = yForBpm(v)
+                    drawCircle(RescuerHrLightBlue, 3.dp.toPx(), Offset(x, y))
+                }
+
+                if (durationSec > 0) {
+                    val intervals = when { durationSec > 180 -> 60L; durationSec > 60 -> 30L; else -> 15L }
+                    var tick = intervals
+                    while (tick < durationSec) {
+                        val frac = tick.toFloat() / durationSec
+                        val x = frac * size.width
+                        val label = textMeasurer.measure(
+                            "${tick / 60}:${"%02d".format(tick % 60)}",
+                            TextStyle(fontSize = 9.sp),
+                        )
+                        drawText(label, DimText, Offset(x - label.size.width / 2, size.height + 4.dp.toPx()))
+                        tick += intervals
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+    }
+}
+
+@Composable
 private fun TimeBreakdown(scorecard: ScorecardAlignedStats) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         BreakdownRow(
@@ -565,6 +705,31 @@ private fun BreakdownRow(color: Color, label: String, time: String, pct: String)
         Text(time, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White,
             modifier = Modifier.padding(end = 12.dp))
         Text(pct, fontSize = 13.sp, color = DimText, modifier = Modifier.width(36.dp), textAlign = TextAlign.End)
+    }
+}
+
+/** Last-known forward fill so sparse HR samples (every Nth compression) still draw a continuous line. */
+private fun forwardFilledRescuerHr(events: List<CompressionEvent>): List<Float>? {
+    var carry: Float? = null
+    val partial = events.map { e ->
+        val r = e.rescuerHrBpm?.takeIf { it > 0 }?.toFloat()
+        if (r != null) carry = r
+        carry
+    }
+    val firstIdx = partial.indexOfFirst { it != null }
+    if (firstIdx < 0) return null
+    val seed = partial[firstIdx]!!
+    var c = seed
+    return List(events.size) { i ->
+        val v = partial[i]
+        when {
+            v != null -> {
+                c = v
+                c
+            }
+            i < firstIdx -> seed
+            else -> c
+        }
     }
 }
 
