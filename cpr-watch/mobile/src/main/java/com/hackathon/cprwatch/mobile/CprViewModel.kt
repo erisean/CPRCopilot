@@ -17,7 +17,7 @@ import kotlinx.coroutines.launch
 import kotlin.math.sin
 import kotlin.random.Random
 
-enum class ScreenState { IDLE, LIVE, SCORECARD }
+enum class ScreenState { IDLE, LIVE, SCORECARD, HISTORY, HISTORY_DETAIL }
 
 data class MobileUiState(
     val screen: ScreenState = ScreenState.IDLE,
@@ -28,13 +28,16 @@ data class MobileUiState(
     val isSimulating: Boolean = false,
     val isListening: Boolean = false,
     val watchConnected: Boolean = false,
-    val watchName: String? = null
+    val watchName: String? = null,
+    val selectedHistorySession: CprSession? = null
 )
 
 class CprViewModel(application: Application) : AndroidViewModel(application) {
 
     private var simulationJob: Job? = null
     private val _completedSession = MutableStateFlow<CprSession?>(null)
+    private val _screenOverride = MutableStateFlow<ScreenState?>(null)
+    private val _selectedHistorySession = MutableStateFlow<CprSession?>(null)
     private val connectionMonitor = WatchConnectionMonitor(application)
 
     init {
@@ -49,7 +52,9 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
         CprRepository.simulating,
         CprRepository.listening,
         _completedSession,
-        connectionMonitor.state
+        connectionMonitor.state,
+        _screenOverride,
+        _selectedHistorySession
     ) { values ->
         val current = values[0] as CprSession?
         val past = @Suppress("UNCHECKED_CAST") (values[1] as List<CprSession>)
@@ -57,8 +62,10 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
         val listening = values[3] as Boolean
         val completed = values[4] as CprSession?
         val connection = values[5] as WatchConnectionState
+        val override = values[6] as ScreenState?
+        val historySession = values[7] as CprSession?
 
-        val screen = when {
+        val screen = override ?: when {
             current != null -> ScreenState.LIVE
             completed != null -> ScreenState.SCORECARD
             else -> ScreenState.IDLE
@@ -72,7 +79,8 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
             isSimulating = simulating,
             isListening = listening,
             watchConnected = connection.isConnected,
-            watchName = connection.watchName
+            watchName = connection.watchName,
+            selectedHistorySession = historySession
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), MobileUiState())
 
@@ -93,6 +101,26 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
 
     fun dismissScorecard() {
         _completedSession.value = null
+        _screenOverride.value = null
+    }
+
+    fun showHistory() {
+        _screenOverride.value = ScreenState.HISTORY
+    }
+
+    fun showHistoryDetail(session: CprSession) {
+        _selectedHistorySession.value = session
+        _screenOverride.value = ScreenState.HISTORY_DETAIL
+    }
+
+    fun backFromHistory() {
+        _screenOverride.value = null
+        _selectedHistorySession.value = null
+    }
+
+    fun backFromHistoryDetail() {
+        _screenOverride.value = ScreenState.HISTORY
+        _selectedHistorySession.value = null
     }
 
     fun startSimulation() {

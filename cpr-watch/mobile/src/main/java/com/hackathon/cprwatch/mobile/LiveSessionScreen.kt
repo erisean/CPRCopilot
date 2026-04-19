@@ -1,18 +1,25 @@
 package com.hackathon.cprwatch.mobile
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
@@ -22,9 +29,15 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.scale
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -79,6 +92,7 @@ fun LiveSessionScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .systemBarsPadding()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
@@ -110,8 +124,8 @@ fun LiveSessionScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // BPM hero — compact with badge inline
-            HeroBpm(rate = rate, status = status)
+            // BPM hero with pulse
+            HeroBpm(rate = rate, status = status, compressionCount = events.size)
 
             Spacer(modifier = Modifier.height(12.dp))
 
@@ -127,7 +141,7 @@ fun LiveSessionScreen(
             Spacer(modifier = Modifier.height(2.dp))
             CompressionRateChart(events = events, modifier = Modifier.fillMaxWidth())
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(4.dp))
 
             // Depth chart
             Row(
@@ -150,12 +164,12 @@ fun LiveSessionScreen(
             Spacer(modifier = Modifier.height(2.dp))
             CompressionDepthChart(events = events, modifier = Modifier.fillMaxWidth())
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             // Stats grid
             StatsGrid(events = events)
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             // Guidance bar
             GuidanceBar(feedback = feedback, status = status)
@@ -184,31 +198,84 @@ private enum class RateStatus {
 }
 
 @Composable
-private fun HeroBpm(rate: Int, status: RateStatus) {
+private fun HeroBpm(rate: Int, status: RateStatus, compressionCount: Int) {
     val badgeColor by animateColorAsState(targetValue = status.color, label = "badge")
 
-    Row(
+    val pulseScale = remember { Animatable(1f) }
+    val pulseAlpha = remember { Animatable(0.15f) }
+    val rippleScale = remember { Animatable(1f) }
+    val rippleAlpha = remember { Animatable(0f) }
+
+    LaunchedEffect(compressionCount) {
+        if (compressionCount > 0) {
+            coroutineScope {
+                launch {
+                    pulseScale.snapTo(1.12f)
+                    pulseAlpha.snapTo(0.5f)
+                    pulseScale.animateTo(1f, tween(350))
+                }
+                launch {
+                    pulseAlpha.snapTo(0.5f)
+                    pulseAlpha.animateTo(0.15f, tween(400))
+                }
+                launch {
+                    rippleScale.snapTo(1f)
+                    rippleAlpha.snapTo(0.3f)
+                    rippleScale.animateTo(1.35f, tween(500))
+                }
+                launch {
+                    rippleAlpha.snapTo(0.3f)
+                    rippleAlpha.animateTo(0f, tween(500))
+                }
+            }
+        }
+    }
+
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Center
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        // Status badge above
         Box(
             modifier = Modifier
+                .offset(y = (-8).dp)
                 .background(badgeColor.copy(alpha = 0.15f), RoundedCornerShape(16.dp))
-                .padding(horizontal = 12.dp, vertical = 4.dp)
+                .padding(horizontal = 16.dp, vertical = 5.dp)
         ) {
-            Text(status.label, color = badgeColor, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+            Text(status.label, color = badgeColor, fontWeight = FontWeight.Bold, fontSize = 13.sp)
         }
-        Spacer(modifier = Modifier.width(16.dp))
-        Text(
-            text = if (rate > 0) "$rate" else "--",
-            fontSize = 64.sp,
-            fontWeight = FontWeight.Bold,
-            color = Color.White,
-            lineHeight = 64.sp
-        )
-        Spacer(modifier = Modifier.width(8.dp))
-        Text("BPM", fontSize = 14.sp, color = DimText, fontWeight = FontWeight.Medium)
+
+        Spacer(modifier = Modifier.height(2.dp))
+
+        // Pulsing circle with ripple + BPM
+        Box(contentAlignment = Alignment.Center) {
+            // Ripple ring (expands outward and fades)
+            Box(
+                modifier = Modifier
+                    .size(150.dp)
+                    .scale(rippleScale.value)
+                    .alpha(rippleAlpha.value)
+                    .border(1.5.dp, badgeColor, CircleShape)
+            )
+            // Main pulse ring
+            Box(
+                modifier = Modifier
+                    .size(150.dp)
+                    .scale(pulseScale.value)
+                    .alpha(pulseAlpha.value)
+                    .border(2.dp, badgeColor, CircleShape)
+            )
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = if (rate > 0) "$rate" else "--",
+                    fontSize = 56.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = badgeColor,
+                    lineHeight = 56.sp
+                )
+                Text("BPM", fontSize = 13.sp, color = DimText, fontWeight = FontWeight.Medium)
+            }
+        }
     }
 }
 

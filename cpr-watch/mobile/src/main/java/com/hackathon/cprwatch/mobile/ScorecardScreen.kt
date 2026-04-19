@@ -1,5 +1,6 @@
 package com.hackathon.cprwatch.mobile
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -8,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -66,6 +68,8 @@ fun ScorecardScreen(
     session: CprSession?,
     onDismiss: () -> Unit
 ) {
+    BackHandler { onDismiss() }
+
     val events = session?.compressionEvents ?: emptyList()
     if (events.isEmpty()) { onDismiss(); return }
 
@@ -89,6 +93,7 @@ fun ScorecardScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .systemBarsPadding()
                 .verticalScroll(rememberScrollState())
                 .padding(20.dp)
         ) {
