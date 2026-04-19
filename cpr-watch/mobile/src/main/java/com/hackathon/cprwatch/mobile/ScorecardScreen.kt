@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -240,16 +241,28 @@ fun ScorecardScreen(
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.Top
             ) {
                 Text("Heart rate over time", fontSize = 14.sp, color = Color.White, fontWeight = FontWeight.Medium)
-                Text(
-                    text = if (rescuerHrSamples.isEmpty()) "avg —"
-                    else "avg %d bpm".format((rescuerHrSamples.sum().toDouble() / rescuerHrSamples.size).toInt()),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = RescuerHrLightBlue,
-                )
+                Column(
+                    modifier = Modifier.wrapContentWidth(align = Alignment.End),
+                    horizontalAlignment = Alignment.Start,
+                ) {
+                    Text(
+                        text = if (rescuerHrSamples.isEmpty()) "avg —"
+                        else "avg %d bpm".format((rescuerHrSamples.sum().toDouble() / rescuerHrSamples.size).toInt()),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = RescuerHrLightBlue,
+                    )
+                    Text(
+                        text = if (rescuerHrSamples.isEmpty()) "max —"
+                        else "max %d bpm".format(rescuerHrSamples.maxOrNull()!!),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = RescuerHrLightBlue,
+                    )
+                }
             }
             Spacer(modifier = Modifier.height(8.dp))
             AnnotatedRescuerHrChart(events = events, durationSec = scorecard.sessionDurationSec)
@@ -580,7 +593,7 @@ private fun AnnotatedRescuerHrChart(events: List<CompressionEvent>, durationSec:
                 val dataMin = series.minOrNull()!!
                 val dataMax = series.maxOrNull()!!
                 var minV = dataMin - 10f
-                var maxV = dataMax + 20f
+                var maxV = dataMax + 10f
                 if (maxV <= minV) {
                     val pad = 20f
                     minV -= pad
@@ -598,7 +611,13 @@ private fun AnnotatedRescuerHrChart(events: List<CompressionEvent>, durationSec:
                     size.height * (1 - (bpm - minV) / range)
 
                 val midBpm = (minV + maxV) / 2f
-                drawDashedLine(yForBpm(midBpm), RescuerHrLightBlue.copy(alpha = 0.18f))
+                // Grid at min / mid / max so the top tick (data max + 10 bpm headroom) isn’t visually “floating”
+                // with no line while the middle tick has one.
+                val grid = RescuerHrLightBlue.copy(alpha = 0.18f)
+                val gridEdge = RescuerHrLightBlue.copy(alpha = 0.14f)
+                drawDashedLine(yForBpm(maxV), gridEdge)
+                drawDashedLine(yForBpm(midBpm), grid)
+                drawDashedLine(yForBpm(minV), gridEdge)
 
                 val topLabel = textMeasurer.measure(maxV.roundToInt().toString(), TextStyle(fontSize = 9.sp))
                 drawText(topLabel, DimText, Offset(-2f, yForBpm(maxV) - topLabel.size.height / 2))
