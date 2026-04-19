@@ -6,6 +6,8 @@ import android.os.Vibrator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
@@ -14,6 +16,10 @@ class HapticCoach(context: Context) {
     private val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
 
     private var metronomeJob: Job? = null
+    private var beatCounter = 0L
+
+    private val _metronomeBeats = MutableSharedFlow<Long>(extraBufferCapacity = 16)
+    val metronomeBeats: SharedFlow<Long> = _metronomeBeats
 
     // 110 bpm = 545ms interval (middle of AHA's 100-120 range)
     private val targetIntervalMs = 545L
@@ -30,9 +36,12 @@ class HapticCoach(context: Context) {
 
     fun startMetronome(scope: CoroutineScope) {
         stopMetronome()
+        beatCounter = 0L
         metronomeJob = scope.launch {
             while (isActive) {
                 vibrator.vibrate(tickEffect)
+                beatCounter++
+                _metronomeBeats.tryEmit(beatCounter)
                 delay(targetIntervalMs)
             }
         }

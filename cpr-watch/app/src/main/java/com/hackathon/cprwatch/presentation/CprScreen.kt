@@ -1,6 +1,10 @@
 package com.hackathon.cprwatch.presentation
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,9 +16,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -85,11 +92,14 @@ private fun ActiveScreen(state: CprUiState, onStop: () -> Unit) {
         else -> Color.Yellow
     }
 
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-        modifier = Modifier.padding(8.dp)
-    ) {
+    Box(contentAlignment = Alignment.Center) {
+        PulseRing(beatId = state.metronomeBeatId, color = feedbackColor)
+
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.padding(8.dp)
+        ) {
         // Rate display
         Text(
             text = "${state.rate}",
@@ -172,5 +182,31 @@ private fun ActiveScreen(state: CprUiState, onStop: () -> Unit) {
         ) {
             Text("■", fontSize = 14.sp)
         }
+        }
+    }
+}
+
+@Composable
+private fun PulseRing(beatId: Long, color: Color) {
+    val progress = remember { Animatable(1f) }
+
+    LaunchedEffect(beatId) {
+        if (beatId <= 0L) return@LaunchedEffect
+        progress.snapTo(0f)
+        progress.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(durationMillis = 520, easing = FastOutSlowInEasing)
+        )
+    }
+
+    Canvas(modifier = Modifier.size(170.dp)) {
+        val t = progress.value
+        val radius = size.minDimension * (0.22f + 0.34f * t)
+        val alpha = (1f - t) * 0.55f
+        drawCircle(
+            color = color.copy(alpha = alpha),
+            radius = radius,
+            style = Stroke(width = 5.dp.toPx())
+        )
     }
 }
