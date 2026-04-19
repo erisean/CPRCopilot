@@ -88,6 +88,7 @@ private fun gradeFor(inZonePct: Int): GradeInfo = when {
 @Composable
 fun ScorecardScreen(
     session: CprSession?,
+    surfaceProfile: MobileSurfaceProfile? = null,
     onDismiss: () -> Unit
 ) {
     BackHandler { onDismiss() }
@@ -228,7 +229,12 @@ fun ScorecardScreen(
                 )
             }
             Spacer(modifier = Modifier.height(8.dp))
-            CompressionDepthChart(events = events, modifier = Modifier.fillMaxWidth())
+            CompressionDepthChart(
+                events = events,
+                modifier = Modifier.fillMaxWidth(),
+                targetMinMm = surfaceProfile?.targetDepthMinMm ?: 50f,
+                targetMaxMm = surfaceProfile?.targetDepthMaxMm ?: 60f
+            )
 
             Spacer(modifier = Modifier.height(24.dp))
 
