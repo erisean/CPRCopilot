@@ -139,6 +139,27 @@ fun ScorecardScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Depth over time", fontSize = 14.sp, color = Color.White, fontWeight = FontWeight.Medium)
+                Text(
+                    text = "avg %.0f mm".format(avgDepthMm),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = when {
+                        avgDepthMm in 50.0..60.0 -> Color(0xFFFF9800)
+                        else -> GradeRed
+                    }
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            CompressionDepthChart(events = events, modifier = Modifier.fillMaxWidth())
+
+            Spacer(modifier = Modifier.height(24.dp))
+
             Text("Time breakdown", fontSize = 14.sp, color = Color.White, fontWeight = FontWeight.Medium)
             Spacer(modifier = Modifier.height(12.dp))
             TimeBreakdown(inZonePct, tooFastPct, tooSlowPct, durationSec)
