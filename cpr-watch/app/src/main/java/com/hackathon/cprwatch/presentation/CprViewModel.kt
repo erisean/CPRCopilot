@@ -10,6 +10,7 @@ import com.hackathon.cprwatch.sensor.CompressionDetector
 import com.hackathon.cprwatch.sensor.CompressionFeedback
 import com.hackathon.cprwatch.sensor.CompressionMetrics
 import com.hackathon.cprwatch.sensor.CompressionResult
+import com.hackathon.cprwatch.sensor.HeartRateMonitor
 import com.hackathon.cprwatch.shared.CompressionEvent
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -21,6 +22,7 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
 
     private val detector = CompressionDetector(application)
     private val haptic = HapticCoach(application)
+    private val heartRateMonitor = HeartRateMonitor(application)
     private val voice = VoiceCoach(application)
     private val dataSender = DataSender(application)
 
@@ -48,6 +50,7 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
         )
 
         detector.start()
+        heartRateMonitor.start()
         haptic.startMetronome(viewModelScope)
 
         viewModelScope.launch {
@@ -58,6 +61,7 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
     fun stopSession() {
         sessionActive = false
         detector.stop()
+        heartRateMonitor.stop()
         haptic.stopMetronome()
         _uiState.value = CprUiState()
 
@@ -84,8 +88,9 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
 
         // Send one event per compression to the phone
         detector.compressionCompleted
-            .onEach { result ->
+            .onEach { raw ->
                 if (!sessionActive) return@onEach
+                val result = raw.copy(rescuerHrBpm = heartRateMonitor.heartRate.value.takeIf { it > 0 })
 
                 viewModelScope.launch {
                     try {
@@ -116,6 +121,12 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
             }
             .launchIn(viewModelScope)
 
+        heartRateMonitor.heartRate
+            .onEach { hr ->
+                _uiState.value = _uiState.value.copy(rescuerHr = hr)
+            }
+            .launchIn(viewModelScope)
+
         haptic.metronomeBeats
             .onEach { beatId ->
                 if (!sessionActive) return@onEach
@@ -138,7 +149,7 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
             dutyCycle = result.dutyCycle,
             peakAccelMps2 = result.peakAccel,
             wristAngleDeg = 0f,
-            rescuerHrBpm = null,
+            rescuerHrBpm = result.rescuerHrBpm,
             isQualityGood = feedback == CompressionFeedback.GOOD,
             instruction = when (feedback) {
                 CompressionFeedback.GOOD -> "none"
@@ -188,6 +199,7 @@ data class CprUiState(
     val accelZ: Float = 0f,
     val accelMagnitude: Float = 0f,
     val accelTimestampMs: Long = 0L,
+    val rescuerHr: Int = 0,
     val messagesSent: Int = 0,
     val sendError: String? = null,
     val metronomeBeatId: Long = 0L

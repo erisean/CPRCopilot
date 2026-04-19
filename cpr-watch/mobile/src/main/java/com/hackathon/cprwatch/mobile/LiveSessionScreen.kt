@@ -167,7 +167,10 @@ fun LiveSessionScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             // Stats grid
-            StatsGrid(events = events)
+            StatsGrid(
+                events = events,
+                rescuerHr = rescuerHrForDisplay(latestEvent, events),
+            )
 
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -279,8 +282,17 @@ private fun HeroBpm(rate: Int, status: RateStatus, compressionCount: Int) {
     }
 }
 
+/** Latest beat’s HR, or most recent prior non-null HR (avoids “--” on sparse samples). */
+private fun rescuerHrForDisplay(latest: CompressionEvent?, events: List<CompressionEvent>): Int? {
+    latest?.rescuerHrBpm?.takeIf { it > 0 }?.let { return it }
+    for (i in events.indices.reversed()) {
+        events[i].rescuerHrBpm?.takeIf { it > 0 }?.let { return it }
+    }
+    return null
+}
+
 @Composable
-private fun StatsGrid(events: List<CompressionEvent>) {
+private fun StatsGrid(events: List<CompressionEvent>, rescuerHr: Int?) {
     val count = events.size
     val inZoneCount = events.count { it.rollingRateBpm in 100f..120f }
     val inZonePct = if (count > 0) inZoneCount * 100 / count else 0
@@ -315,6 +327,26 @@ private fun StatsGrid(events: List<CompressionEvent>) {
             modifier = Modifier.weight(1f)
         )
         StatCard("Avg Rate", if (avgRate > 0) "$avgRate" else "--", modifier = Modifier.weight(1f))
+    }
+
+    Spacer(modifier = Modifier.height(8.dp))
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        StatCard(
+            "\u2764\uFE0F Rescuer HR",
+            if (rescuerHr != null && rescuerHr > 0) "$rescuerHr" else "--",
+            valueColor = when {
+                rescuerHr == null || rescuerHr == 0 -> Color.White
+                rescuerHr > 150 -> Red
+                rescuerHr > 130 -> Orange
+                else -> Green
+            },
+            modifier = Modifier.weight(1f)
+        )
+        Spacer(modifier = Modifier.weight(1f))
     }
 }
 

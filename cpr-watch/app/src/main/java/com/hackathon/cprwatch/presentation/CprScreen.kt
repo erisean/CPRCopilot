@@ -124,6 +124,15 @@ private fun ActiveScreen(state: CprUiState, onStop: () -> Unit) {
             )
         }
 
+        // Heart rate
+        if (state.rescuerHr > 0) {
+            Text(
+                text = "\u2764 ${state.rescuerHr}",
+                fontSize = 12.sp,
+                color = Color.Red
+            )
+        }
+
         Spacer(modifier = Modifier.height(4.dp))
 
         // Feedback message
