@@ -11,10 +11,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
@@ -102,23 +105,24 @@ fun IdleScreen(
             // Infant mode toggle
             InfantModeToggle()
 
-            // Main start button area
+            // Start session: only the circle is clickable (not the whole card) so debug/coach stay usable.
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f)
-                    .padding(vertical = 16.dp)
                     .clip(RoundedCornerShape(20.dp))
                     .background(CardBg)
-                    .clickable { onStartSession() },
-                contentAlignment = Alignment.Center
+                    .padding(vertical = 20.dp),
+                contentAlignment = Alignment.TopCenter
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    // Circular button outline
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
                     Box(
                         modifier = Modifier
                             .size(180.dp)
-                            .border(2.dp, Color(0xFF333333), CircleShape),
+                            .border(2.dp, Color(0xFF333333), CircleShape)
+                            .clickable { onStartSession() },
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -132,14 +136,14 @@ fun IdleScreen(
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "tap anywhere to begin",
+                                text = "tap to begin",
                                 fontSize = 12.sp,
                                 color = DimText
                             )
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(24.dp))
+                    Spacer(modifier = Modifier.height(20.dp))
 
                     Text(
                         text = "\"hey google, start CPR\"",
@@ -147,20 +151,22 @@ fun IdleScreen(
                         color = DimText,
                         fontWeight = FontWeight.Light
                     )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Text(
-                        text = "debug mode",
-                        fontSize = 12.sp,
-                        color = Color(0xFF4CAF50),
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { onStartDebug() }
-                            .padding(horizontal = 12.dp, vertical = 4.dp)
-                    )
                 }
             }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Text(
+                text = "debug mode",
+                fontSize = 13.sp,
+                color = Color(0xFF4CAF50),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { onStartDebug() }
+                    .padding(vertical = 8.dp),
+                textAlign = TextAlign.Center
+            )
 
             Spacer(modifier = Modifier.height(12.dp))
 

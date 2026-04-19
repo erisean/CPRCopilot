@@ -27,6 +27,11 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -45,7 +50,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hackathon.cprwatch.shared.CompressionEvent
 import com.hackathon.cprwatch.shared.CprSession
-
+import com.hackathon.cprwatch.shared.insights.ScorecardAlignedStats
+import com.hackathon.cprwatch.shared.insights.SessionSummaryCalculator
 private val DarkBg = Color(0xFF0D0D0D)
 private val CardBg = Color(0xFF1A1A1A)
 private val DimText = Color(0xFF6B6B6B)
@@ -73,21 +79,46 @@ fun ScorecardScreen(
     val events = session?.compressionEvents ?: emptyList()
     if (events.isEmpty()) { onDismiss(); return }
 
-    val total = events.size
-    val avgRate = events.map { it.rollingRateBpm }.average().toInt()
-    val inZoneCount = events.count { it.rollingRateBpm in 100f..120f }
-    val inZonePct = inZoneCount * 100 / total
-    val tooFastCount = events.count { it.rollingRateBpm > 120f }
-    val tooSlowCount = events.count { it.rollingRateBpm < 100f }
-    val tooFastPct = tooFastCount * 100 / total
-    val tooSlowPct = tooSlowCount * 100 / total
-    val avgDepthMm = events.map { it.estimatedDepthMm }.average()
-    val avgRecoil = events.map { it.recoilPct }.average()
-    val durationSec = if (events.size >= 2)
-        (events.last().timestampMs - events.first().timestampMs) / 1000 else 0L
-    val bestStreak = computeBestStreak(events)
-    val grade = gradeFor(inZonePct)
-    val summary = generateSummary(events, grade, inZonePct, avgRate, tooFastCount, tooSlowCount, durationSec)
+    val scorecard = remember(events) { ScorecardAlignedStats.from(events)!! }
+    val sessionSummary = remember(events) { SessionSummaryCalculator.fromCompressionEvents(events)!! }
+
+    val grade = gradeFor(scorecard.inZonePct)
+    val heuristicSummary =
+        generateSummary(
+            events,
+            grade,
+            scorecard.inZonePct,
+            scorecard.avgRateBpm,
+            scorecard.tooFastCount,
+            scorecard.tooSlowCount,
+            scorecard.sessionDurationSec,
+        )
+
+    var aiSummaryText by remember(events) { mutableStateOf<String?>(null) }
+    var aiLoading by remember(events) { mutableStateOf(false) }
+    var aiErrorNote by remember(events) { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(events) {
+        aiSummaryText = null
+        aiErrorNote = null
+        val key = DevApiKeys.anthropicApiKeyOrEmpty().trim()
+        if (key.isEmpty()) return@LaunchedEffect
+        aiLoading = true
+        val result = AnthropicInsightsClient.fetchSessionSummary(key, sessionSummary, scorecard)
+        aiLoading = false
+        result.fold(
+            onSuccess = { aiSummaryText = it.summary },
+            onFailure = { e -> aiErrorNote = e.message ?: "Summary unavailable" }
+        )
+    }
+
+    val paragraphUnderHero = when {
+        aiLoading -> "Fetching AI summary…"
+        aiSummaryText != null -> aiSummaryText!!
+        else -> heuristicSummary
+    }
+
+    val avgDepthMm = scorecard.avgDepthMm
 
     Surface(modifier = Modifier.fillMaxSize(), color = DarkBg) {
         Column(
@@ -114,28 +145,47 @@ fun ScorecardScreen(
 
             Spacer(modifier = Modifier.height(28.dp))
 
-            GradeRing(grade = grade, inZonePct = inZonePct)
+            GradeRing(grade = grade, inZonePct = scorecard.inZonePct)
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             Text(
-                text = summary,
-                fontSize = 15.sp,
-                color = Color.White.copy(alpha = 0.75f),
-                textAlign = TextAlign.Center,
-                lineHeight = 22.sp,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)
+                text = "Summary",
+                fontSize = 12.sp,
+                color = DimText,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center
             )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = paragraphUnderHero,
+                fontSize = 15.sp,
+                color = Color.White.copy(alpha = if (aiLoading) 0.55f else 0.85f),
+                textAlign = TextAlign.Start,
+                lineHeight = 22.sp,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)
+            )
+
+            aiErrorNote?.let { err ->
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "AI unavailable — showing quick take above. ($err)",
+                    fontSize = 11.sp,
+                    color = GradeAmber.copy(alpha = 0.9f),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)
+                )
+            }
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            MetricsGrid(durationSec, total, avgRate, bestStreak, durationSec)
+            MetricsGrid(scorecard)
 
             Spacer(modifier = Modifier.height(24.dp))
 
             Text("Rate over time", fontSize = 14.sp, color = Color.White, fontWeight = FontWeight.Medium)
             Spacer(modifier = Modifier.height(8.dp))
-            AnnotatedRateChart(events = events, durationSec = durationSec)
+            AnnotatedRateChart(events = events, durationSec = scorecard.sessionDurationSec)
 
             Spacer(modifier = Modifier.height(24.dp))
 
@@ -162,7 +212,7 @@ fun ScorecardScreen(
 
             Text("Time breakdown", fontSize = 14.sp, color = Color.White, fontWeight = FontWeight.Medium)
             Spacer(modifier = Modifier.height(12.dp))
-            TimeBreakdown(inZonePct, tooFastPct, tooSlowPct, durationSec)
+            TimeBreakdown(scorecard)
 
             Spacer(modifier = Modifier.height(32.dp))
 
@@ -200,21 +250,26 @@ private fun GradeRing(grade: GradeInfo, inZonePct: Int) {
 }
 
 @Composable
-private fun MetricsGrid(durationSec: Long, total: Int, avgRate: Int, bestStreak: Long, sessionDuration: Long) {
-    val streakProgress = if (sessionDuration > 0) (bestStreak.toFloat() / sessionDuration).coerceIn(0f, 1f) else 0f
-
+private fun MetricsGrid(scorecard: ScorecardAlignedStats) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            MetricCard("DURATION", formatDuration(durationSec), modifier = Modifier.weight(1f))
-            MetricCard("COMPRESSIONS", "$total", modifier = Modifier.weight(1f))
+            MetricCard("DURATION", formatDuration(scorecard.sessionDurationSec), modifier = Modifier.weight(1f))
+            MetricCard("COMPRESSIONS", "${scorecard.totalCompressions}", modifier = Modifier.weight(1f))
         }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            MetricCard("AVG RATE", "$avgRate", subtitle = "target: 100–120 BPM", modifier = Modifier.weight(1f))
             MetricCard(
-                "LONGEST STREAK", formatDuration(bestStreak),
+                "AVG RATE",
+                "${scorecard.avgRateBpm}",
+                subtitle = "target: 100–120 BPM",
+                modifier = Modifier.weight(1f),
+            )
+            MetricCard(
+                "LONGEST STREAK",
+                formatDuration(scorecard.longestInZoneStreakSec),
                 subtitle = "in target zone",
-                progress = streakProgress, progressColor = GradeBlue,
-                modifier = Modifier.weight(1f)
+                progress = scorecard.longestStreakFractionOfSession,
+                progressColor = GradeBlue,
+                modifier = Modifier.weight(1f),
             )
         }
     }
@@ -300,11 +355,26 @@ private fun AnnotatedRateChart(events: List<CompressionEvent>, durationSec: Long
 }
 
 @Composable
-private fun TimeBreakdown(inZonePct: Int, tooFastPct: Int, tooSlowPct: Int, durationSec: Long) {
+private fun TimeBreakdown(scorecard: ScorecardAlignedStats) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        BreakdownRow(GradeGreen, "In zone (100–120)", formatDuration(durationSec * inZonePct / 100), "$inZonePct%")
-        BreakdownRow(GradeRed, "Too fast (>120)", formatDuration(durationSec * tooFastPct / 100), "$tooFastPct%")
-        BreakdownRow(GradeAmber, "Too slow (<100)", formatDuration(durationSec * tooSlowPct / 100), "$tooSlowPct%")
+        BreakdownRow(
+            GradeGreen,
+            "In zone (100–120)",
+            formatDuration(scorecard.approxWallTimeInZoneSec),
+            "${scorecard.inZonePct}%",
+        )
+        BreakdownRow(
+            GradeRed,
+            "Too fast (>120)",
+            formatDuration(scorecard.approxWallTimeTooFastSec),
+            "${scorecard.tooFastPct}%",
+        )
+        BreakdownRow(
+            GradeAmber,
+            "Too slow (<100)",
+            formatDuration(scorecard.approxWallTimeTooSlowSec),
+            "${scorecard.tooSlowPct}%",
+        )
     }
 }
 
@@ -318,19 +388,6 @@ private fun BreakdownRow(color: Color, label: String, time: String, pct: String)
             modifier = Modifier.padding(end = 12.dp))
         Text(pct, fontSize = 13.sp, color = DimText, modifier = Modifier.width(36.dp), textAlign = TextAlign.End)
     }
-}
-
-private fun computeBestStreak(events: List<CompressionEvent>): Long {
-    if (events.size < 2) return 0L
-    var bestMs = 0L; var streakStart = events.first().timestampMs
-    var inStreak = events.first().rollingRateBpm in 100f..120f
-    for (i in 1 until events.size) {
-        val inZone = events[i].rollingRateBpm in 100f..120f
-        if (inZone && !inStreak) { streakStart = events[i].timestampMs; inStreak = true }
-        else if (!inZone && inStreak) { bestMs = maxOf(bestMs, events[i].timestampMs - streakStart); inStreak = false }
-    }
-    if (inStreak) bestMs = maxOf(bestMs, events.last().timestampMs - streakStart)
-    return bestMs / 1000
 }
 
 private fun findPeaks(events: List<CompressionEvent>): List<Int> {

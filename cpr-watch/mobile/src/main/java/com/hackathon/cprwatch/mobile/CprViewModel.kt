@@ -132,7 +132,6 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
 
         simulationJob = viewModelScope.launch {
             var count = 0
-            var lastMs = System.currentTimeMillis()
             while (isActive) {
                 count++
                 val now = System.currentTimeMillis()
@@ -174,11 +173,10 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
                             "faster", "slower" -> 2
                             "push_harder", "ease_up" -> 3
                             else -> null
-                        }
-                    )
+                        },
+                    ),
                 )
 
-                lastMs = now
                 delay(intervalMs.toLong())
             }
         }

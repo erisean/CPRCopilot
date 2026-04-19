@@ -1,0 +1,6 @@
+# Rename to local.properties next to settings.gradle.kts (same folder as this file).
+# Git ignores local.properties — never commit keys.
+ANTHROPIC_API_KEY=
+# Optional — must match an id your Anthropic key can use (see console docs).
+# Leave blank to use claude-sonnet-4-6 (same default as generate_insights.py).
+ANTHROPIC_MODEL=
