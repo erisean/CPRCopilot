@@ -164,10 +164,12 @@ class CompressionDetector(context: Context) : SensorEventListener {
             gravityInitialized = true
             calibrationStartMs = now / 1_000_000
         }
-        val alpha = gravityTimeConstantSec / (gravityTimeConstantSec + dt)
-        gravityX = alpha * gravityX + (1 - alpha) * rawX
-        gravityY = alpha * gravityY + (1 - alpha) * rawY
-        gravityZ = alpha * gravityZ + (1 - alpha) * rawZ
+        if (phase == CyclePhase.IDLE) {
+            val alpha = gravityTimeConstantSec / (gravityTimeConstantSec + dt)
+            gravityX = alpha * gravityX + (1 - alpha) * rawX
+            gravityY = alpha * gravityY + (1 - alpha) * rawY
+            gravityZ = alpha * gravityZ + (1 - alpha) * rawZ
+        }
 
         val currentTimeMs = now / 1_000_000
 
