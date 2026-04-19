@@ -110,16 +110,10 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
                                         CompressionFeedback.TOO_SHALLOW -> "push_harder"
                                         CompressionFeedback.TOO_DEEP -> "ease_up"
                                         CompressionFeedback.IDLE -> "none"
-<<<<<<< Updated upstream
                                         CompressionFeedback.CALIBRATING -> "none"
                                     },
                                     instructionPriority = when (metrics.feedback) {
                                         CompressionFeedback.GOOD, CompressionFeedback.CALIBRATING, CompressionFeedback.IDLE -> null
-=======
-                                    },
-                                    instructionPriority = when (metrics.feedback) {
-                                        CompressionFeedback.GOOD, CompressionFeedback.IDLE -> null
->>>>>>> Stashed changes
                                         CompressionFeedback.TOO_SLOW, CompressionFeedback.TOO_FAST -> 2
                                         CompressionFeedback.TOO_SHALLOW, CompressionFeedback.TOO_DEEP -> 3
                                     }

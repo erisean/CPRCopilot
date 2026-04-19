@@ -206,7 +206,7 @@ class CompressionDetector(context: Context) : SensorEventListener {
 
         // Check for idle
         if (lastPeakTime > 0 && (currentTimeMs - lastPeakTime) > idleTimeoutMs) {
-            reset()
+            //reset()
         }
     }
 
