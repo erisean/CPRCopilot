@@ -53,7 +53,13 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
         }
         viewModelScope.launch {
             CprRepository.currentSession.collect { session ->
-                val events = session?.compressionEvents ?: emptyList()
+                if (session == null) {
+                    lastEventCount = 0
+                    surfaceCalibrator.reset()
+                    _surfaceState.value = Triple(false, 0f, null)
+                    return@collect
+                }
+                val events = session.compressionEvents
                 if (events.size > lastEventCount) {
                     for (i in lastEventCount until events.size) {
                         surfaceCalibrator.addEvent(events[i])
