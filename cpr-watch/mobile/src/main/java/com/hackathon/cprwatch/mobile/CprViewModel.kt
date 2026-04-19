@@ -30,7 +30,10 @@ data class MobileUiState(
     val isListening: Boolean = false,
     val watchConnected: Boolean = false,
     val watchName: String? = null,
-    val selectedHistorySession: CprSession? = null
+    val selectedHistorySession: CprSession? = null,
+    val surfaceCalibrated: Boolean = false,
+    val surfaceCalibrationProgress: Float = 0f,
+    val surfaceProfile: MobileSurfaceProfile? = null
 )
 
 class CprViewModel(application: Application) : AndroidViewModel(application) {
@@ -40,10 +43,36 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
     private val _screenOverride = MutableStateFlow<ScreenState?>(null)
     private val _selectedHistorySession = MutableStateFlow<CprSession?>(null)
     private val connectionMonitor = WatchConnectionMonitor(application)
+    private val surfaceCalibrator = MobileSurfaceCalibrator()
+    private val _surfaceState = MutableStateFlow(Triple(false, 0f, null as MobileSurfaceProfile?))
+
+    private var lastEventCount = 0
 
     init {
         viewModelScope.launch {
             connectionMonitor.startMonitoring()
+        }
+        viewModelScope.launch {
+            CprRepository.currentSession.collect { session ->
+                if (session == null) {
+                    lastEventCount = 0
+                    surfaceCalibrator.reset()
+                    _surfaceState.value = Triple(false, 0f, null)
+                    return@collect
+                }
+                val events = session.compressionEvents
+                if (events.size > lastEventCount) {
+                    for (i in lastEventCount until events.size) {
+                        surfaceCalibrator.addEvent(events[i])
+                    }
+                    lastEventCount = events.size
+                    _surfaceState.value = Triple(
+                        surfaceCalibrator.isCalibrated,
+                        surfaceCalibrator.progress,
+                        surfaceCalibrator.profile
+                    )
+                }
+            }
         }
     }
 
@@ -55,7 +84,8 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
         _completedSession,
         connectionMonitor.state,
         _screenOverride,
-        _selectedHistorySession
+        _selectedHistorySession,
+        _surfaceState
     ) { values ->
         val current = values[0] as CprSession?
         val past = @Suppress("UNCHECKED_CAST") (values[1] as List<CprSession>)
@@ -65,6 +95,7 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
         val connection = values[5] as WatchConnectionState
         val override = values[6] as ScreenState?
         val historySession = values[7] as CprSession?
+        val surface = @Suppress("UNCHECKED_CAST") (values[8] as Triple<Boolean, Float, MobileSurfaceProfile?>)
 
         val screen = override ?: when {
             current != null -> ScreenState.LIVE
@@ -81,12 +112,18 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
             isListening = listening,
             watchConnected = connection.isConnected,
             watchName = connection.watchName,
-            selectedHistorySession = historySession
+            selectedHistorySession = historySession,
+            surfaceCalibrated = surface.first,
+            surfaceCalibrationProgress = surface.second,
+            surfaceProfile = surface.third
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), MobileUiState())
 
     fun startSession() {
         _completedSession.value = null
+        surfaceCalibrator.reset()
+        lastEventCount = 0
+        _surfaceState.value = Triple(false, 0f, null)
         CprRepository.startListening()
         CprRepository.startSession()
     }

@@ -60,6 +60,9 @@ class MainActivity : ComponentActivity(), MessageClient.OnMessageReceivedListene
                         ScreenState.LIVE -> LiveSessionScreen(
                             session = state.currentSession,
                             latestEvent = state.latestEvent,
+                            surfaceCalibrated = state.surfaceCalibrated,
+                            surfaceCalibrationProgress = state.surfaceCalibrationProgress,
+                            surfaceProfile = state.surfaceProfile,
                             onStopSession = { viewModel.stopSession() }
                         )
                         ScreenState.SCORECARD -> ScorecardScreen(

@@ -57,6 +57,9 @@ private val Orange = Color(0xFFFF9800)
 fun LiveSessionScreen(
     session: CprSession?,
     latestEvent: CompressionEvent?,
+    surfaceCalibrated: Boolean = false,
+    surfaceCalibrationProgress: Float = 0f,
+    surfaceProfile: MobileSurfaceProfile? = null,
     onStopSession: () -> Unit
 ) {
     val events = session?.compressionEvents ?: emptyList()
@@ -122,7 +125,16 @@ fun LiveSessionScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Surface calibration banner
+            if (!surfaceCalibrated && surfaceCalibrationProgress > 0f) {
+                SurfaceCalibrationBanner(progress = surfaceCalibrationProgress)
+                Spacer(modifier = Modifier.height(8.dp))
+            } else if (surfaceCalibrated && surfaceProfile != null) {
+                SurfaceBadge(profile = surfaceProfile)
+                Spacer(modifier = Modifier.height(8.dp))
+            }
 
             // BPM hero with pulse
             HeroBpm(rate = rate, status = status, compressionCount = events.size)
@@ -366,6 +378,78 @@ private fun StatCard(
             Text(text = label, fontSize = 11.sp, color = DimText, letterSpacing = 0.3.sp)
             Spacer(modifier = Modifier.height(6.dp))
             Text(text = value, fontSize = 28.sp, fontWeight = FontWeight.Bold, color = valueColor)
+        }
+    }
+}
+
+@Composable
+private fun SurfaceCalibrationBanner(progress: Float) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF00BCD4).copy(alpha = 0.12f), RoundedCornerShape(10.dp))
+            .padding(horizontal = 16.dp, vertical = 10.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(
+                    "Calibrating surface...",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Color(0xFF00BCD4)
+                )
+                Text(
+                    "Keep compressing naturally",
+                    fontSize = 11.sp,
+                    color = DimText
+                )
+            }
+            Text(
+                "${"%.0f".format(progress * 100)}%",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF00BCD4)
+            )
+        }
+    }
+}
+
+@Composable
+private fun SurfaceBadge(profile: MobileSurfaceProfile) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF00BCD4).copy(alpha = 0.12f), RoundedCornerShape(10.dp))
+            .padding(horizontal = 16.dp, vertical = 10.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(
+                    profile.surfaceLabel,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Color(0xFF00BCD4)
+                )
+                Text(
+                    "Target: ${profile.targetDepthMinMm.toInt()}–${profile.targetDepthMaxMm.toInt()} mm",
+                    fontSize = 11.sp,
+                    color = DimText
+                )
+            }
+            Text(
+                "\u2713",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF00BCD4)
+            )
         }
     }
 }

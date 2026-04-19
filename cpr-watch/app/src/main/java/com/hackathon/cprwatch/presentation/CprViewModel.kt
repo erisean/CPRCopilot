@@ -10,6 +10,7 @@ import com.hackathon.cprwatch.sensor.CompressionDetector
 import com.hackathon.cprwatch.sensor.CompressionFeedback
 import com.hackathon.cprwatch.sensor.CompressionMetrics
 import com.hackathon.cprwatch.sensor.CompressionResult
+import com.hackathon.cprwatch.sensor.SurfaceProfile
 import com.hackathon.cprwatch.sensor.HeartRateMonitor
 import com.hackathon.cprwatch.shared.CompressionEvent
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,6 +33,9 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
     private var sessionActive = false
     private var messagesSent = 0
     private var lastSendError: String? = null
+    private var shallowStreak = 0
+    private var deepStreak = 0
+    private var depthGuidanceFeedback = CompressionFeedback.GOOD
 
     init {
         observeDetector()
@@ -42,11 +46,15 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
         sessionActive = true
         messagesSent = 0
         lastSendError = null
+        shallowStreak = 0
+        deepStreak = 0
+        depthGuidanceFeedback = CompressionFeedback.GOOD
 
         _uiState.value = _uiState.value.copy(
             isActive = true,
             feedbackMessage = "Start compressions",
-            metronomeBeatId = 0L
+            metronomeBeatId = 0L,
+            depthGuidanceFeedback = CompressionFeedback.GOOD
         )
 
         detector.start()
@@ -88,9 +96,16 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
 
         // Send one event per compression to the phone
         detector.compressionCompleted
-            .onEach { raw ->
+            .onEach { result ->
                 if (!sessionActive) return@onEach
-                val result = raw.copy(rescuerHrBpm = heartRateMonitor.heartRate.value.takeIf { it > 0 })
+                updateDepthGuidance(_uiState.value.feedback)
+
+                val cal = detector.surfaceCalibrator
+                _uiState.value = _uiState.value.copy(
+                    surfaceCalibrated = cal.isCalibrated,
+                    surfaceCalibrationProgress = cal.progress,
+                    surfaceProfile = cal.profile
+                )
 
                 viewModelScope.launch {
                     try {
@@ -102,7 +117,8 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     _uiState.value = _uiState.value.copy(
                         messagesSent = messagesSent,
-                        sendError = lastSendError
+                        sendError = lastSendError,
+                        depthGuidanceFeedback = depthGuidanceFeedback
                     )
                 }
             }
@@ -180,6 +196,26 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private fun updateDepthGuidance(rawFeedback: CompressionFeedback) {
+        when (rawFeedback) {
+            CompressionFeedback.TOO_SHALLOW -> {
+                shallowStreak++
+                deepStreak = 0
+                if (shallowStreak >= 3) depthGuidanceFeedback = CompressionFeedback.TOO_SHALLOW
+            }
+            CompressionFeedback.TOO_DEEP -> {
+                deepStreak++
+                shallowStreak = 0
+                if (deepStreak >= 3) depthGuidanceFeedback = CompressionFeedback.TOO_DEEP
+            }
+            else -> {
+                shallowStreak = 0
+                deepStreak = 0
+                depthGuidanceFeedback = CompressionFeedback.GOOD
+            }
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
         stopSession()
@@ -199,8 +235,12 @@ data class CprUiState(
     val accelZ: Float = 0f,
     val accelMagnitude: Float = 0f,
     val accelTimestampMs: Long = 0L,
+    val surfaceCalibrated: Boolean = false,
+    val surfaceCalibrationProgress: Float = 0f,
+    val surfaceProfile: SurfaceProfile? = null,
     val rescuerHr: Int = 0,
     val messagesSent: Int = 0,
     val sendError: String? = null,
-    val metronomeBeatId: Long = 0L
+    val metronomeBeatId: Long = 0L,
+    val depthGuidanceFeedback: CompressionFeedback = CompressionFeedback.GOOD
 )

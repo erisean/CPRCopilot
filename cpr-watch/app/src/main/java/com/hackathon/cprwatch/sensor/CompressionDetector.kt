@@ -122,11 +122,20 @@ class CompressionDetector(context: Context) : SensorEventListener {
         private const val TAG = "CompressionDetector"
     }
 
-    // AHA guidelines
+    // AHA guidelines (defaults for standard chest/manikin)
     private val targetRateMin = 100
     private val targetRateMax = 120
-    private val targetDepthMinMm = 50f
-    private val targetDepthMaxMm = 60f
+    private val defaultDepthMinMm = 50f
+    private val defaultDepthMaxMm = 60f
+
+    // Surface calibration
+    private val _surfaceCalibrator = SurfaceCalibrator()
+    val surfaceCalibrator: SurfaceCalibrator get() = _surfaceCalibrator
+
+    private val targetDepthMinMm: Float
+        get() = _surfaceCalibrator.profile?.targetDepthMinMm ?: defaultDepthMinMm
+    private val targetDepthMaxMm: Float
+        get() = _surfaceCalibrator.profile?.targetDepthMaxMm ?: defaultDepthMaxMm
 
     fun start() {
         accelerometer?.let {
@@ -159,6 +168,7 @@ class CompressionDetector(context: Context) : SensorEventListener {
         isCalibrating = true
         cycleSamples.clear()
         smoothingInitialized = false
+        _surfaceCalibrator.reset()
         _metrics.value = CompressionMetrics()
         _liveSample.value = AccelerometerSample()
     }
@@ -411,19 +421,20 @@ class CompressionDetector(context: Context) : SensorEventListener {
             feedback = feedback
         )
 
-        _compressionCompleted.tryEmit(
-            CompressionResult(
-                compressionIdx = compressionIdx,
-                timestampMs = timestampMs,
-                intervalMs = intervalMs,
-                rate = rate,
-                depthMm = depthMm,
-                recoilMm = recoilMm,
-                recoilPct = recoilPct,
-                peakAccel = abs(peakNegativeAccel),
-                dutyCycle = dutyCycle
-            )
+        val result = CompressionResult(
+            compressionIdx = compressionIdx,
+            timestampMs = timestampMs,
+            intervalMs = intervalMs,
+            rate = rate,
+            depthMm = depthMm,
+            recoilMm = recoilMm,
+            recoilPct = recoilPct,
+            peakAccel = abs(peakNegativeAccel),
+            dutyCycle = dutyCycle
         )
+
+        _surfaceCalibrator.addCompression(result)
+        _compressionCompleted.tryEmit(result)
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
@@ -443,6 +454,6 @@ class CompressionDetector(context: Context) : SensorEventListener {
     }
 
     private fun pruneOldTimestamps(currentTimeMs: Long) {
-        compressionTimestamps.removeAll { currentTimeMs - it > 10_000L }
+        compressionTimestamps.removeAll { currentTimeMs - it > 3_000L }
     }
 }
