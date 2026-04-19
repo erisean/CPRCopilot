@@ -157,8 +157,8 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun feedbackMessage(metrics: CompressionMetrics): String {
         return when (metrics.feedback) {
-            CompressionFeedback.IDLE -> "Tap to start"
-            CompressionFeedback.CALIBRATING -> "Calibrating…"
+            CompressionFeedback.IDLE -> "Resume compressions to continue"
+            CompressionFeedback.CALIBRATING -> "Begin compressions"
             CompressionFeedback.GOOD -> "Good compressions!"
             CompressionFeedback.TOO_SLOW -> "Push faster"
             CompressionFeedback.TOO_FAST -> "Slow down"
