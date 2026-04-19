@@ -18,10 +18,13 @@ class HapticCoach(context: Context) {
     // 110 bpm = 545ms interval (middle of AHA's 100-120 range)
     private val targetIntervalMs = 545L
 
-    private val tickEffect = VibrationEffect.createOneShot(40, VibrationEffect.DEFAULT_AMPLITUDE)
+    private val tickEffect = VibrationEffect.createOneShot(60, 255)
     private val warningEffect = VibrationEffect.createWaveform(
-        longArrayOf(0, 100, 50, 100),
-        intArrayOf(0, 255, 0, 255),
+        //longArrayOf(0, 100, 50, 100),
+        //intArrayOf(0, 255, 0, 255),
+        //-1
+        longArrayOf(0, 140, 40, 140, 40, 140),
+        intArrayOf(0, 255, 0, 255, 0, 255),
         -1
     )
 

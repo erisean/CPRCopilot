@@ -138,7 +138,7 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
                     metrics.feedback != CompressionFeedback.CALIBRATING &&
                     metrics.isCompressing
                 ) {
-                    haptic.pulseWarning()
+                    //haptic.pulseWarning()
                 }
             }
             .launchIn(viewModelScope)
