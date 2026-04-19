@@ -5,6 +5,7 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.util.Log
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -105,6 +106,10 @@ class CompressionDetector(context: Context) : SensorEventListener {
     private val maxPhaseDurationMs = 1500L
     private val motionActivityThreshold = 0.8f
 
+    companion object {
+        private const val TAG = "CompressionDetector"
+    }
+
     // AHA guidelines
     private val targetRateMin = 100
     private val targetRateMax = 120
@@ -164,12 +169,21 @@ class CompressionDetector(context: Context) : SensorEventListener {
             gravityInitialized = true
             calibrationStartMs = now / 1_000_000
         }
-        if (phase == CyclePhase.IDLE) {
+        //if (phase == CyclePhase.IDLE) {
             val alpha = gravityTimeConstantSec / (gravityTimeConstantSec + dt)
             gravityX = alpha * gravityX + (1 - alpha) * rawX
             gravityY = alpha * gravityY + (1 - alpha) * rawY
             gravityZ = alpha * gravityZ + (1 - alpha) * rawZ
-        }
+            val mag = sqrt(gravityX * gravityX + gravityY * gravityY + gravityZ * gravityZ)
+            gravityX = gravityX / mag * 9.81f
+            gravityY = gravityY / mag * 9.81f
+            gravityZ = gravityZ / mag * 9.81f
+            Log.v(TAG, "GRAVITY  gx=%.3f  gy=%.3f  gz=%.3f  gMag=%.3f".format(
+                gravityX, gravityY, gravityZ,
+                sqrt(gravityX * gravityX + gravityY * gravityY + gravityZ * gravityZ)
+            ))
+       // }
+
 
         val currentTimeMs = now / 1_000_000
 
@@ -213,6 +227,8 @@ class CompressionDetector(context: Context) : SensorEventListener {
                 if (verticalAccel < downstrokeThreshold) {
                     val timeSinceLast = currentTimeMs - lastCompressionMs
                     if (lastCompressionMs == 0L || timeSinceLast > minCompressionIntervalMs) {
+                        Log.d(TAG, "→ DOWNSTROKE  t=${currentTimeMs}ms  vertAccel=%.2f  timeSinceLast=${timeSinceLast}ms  gx=%.3f  gy=%.3f  gz=%.3f".format(
+                            verticalAccel, gravityX, gravityY, gravityZ))
                         phase = CyclePhase.DOWNSTROKE
                         phaseEnteredMs = currentTimeMs
                         downstrokeStartMs = currentTimeMs
@@ -237,6 +253,8 @@ class CompressionDetector(context: Context) : SensorEventListener {
 
                 // Transition to recoil when acceleration goes positive
                 if (verticalAccel > recoilThreshold) {
+                    Log.d(TAG, "→ RECOIL  t=${currentTimeMs}ms  vertAccel=%.2f  vel=%.3f  disp=%.4f  minDisp=%.4f  gx=%.3f  gy=%.3f  gz=%.3f".format(
+                        verticalAccel, velocity, displacement, minDisplacement, gravityX, gravityY, gravityZ))
                     phase = CyclePhase.RECOIL
                     phaseEnteredMs = currentTimeMs
                 }
@@ -249,6 +267,8 @@ class CompressionDetector(context: Context) : SensorEventListener {
                 // Compression complete when velocity returns near zero
                 // (hands momentarily stationary between compressions)
                 if (abs(velocity) < velocityNearZero) { //&& displacement > minDisplacement) {
+                    Log.d(TAG, "→ COMPLETE  t=${currentTimeMs}ms  vel=%.3f  disp=%.4f  minDisp=%.4f  gx=%.3f  gy=%.3f  gz=%.3f".format(
+                        velocity, displacement, minDisplacement, gravityX, gravityY, gravityZ))
                     onCompressionComplete(currentTimeMs)
                     phase = CyclePhase.IDLE
                     phaseEnteredMs = currentTimeMs
@@ -266,6 +286,8 @@ class CompressionDetector(context: Context) : SensorEventListener {
         val inactiveTooLong = inactivitySince > 0L && (currentTimeMs - inactivitySince) > idleTimeoutMs
 
         if (stuckPhase || inactiveTooLong) {
+            Log.w(TAG, "RESET  stuck=${stuckPhase}  inactive=${inactiveTooLong}  phase=${phase}  phaseAge=${currentTimeMs - phaseEnteredMs}ms  sinceActivity=${currentTimeMs - lastActivityMs}ms  gx=%.3f  gy=%.3f  gz=%.3f".format(
+                gravityX, gravityY, gravityZ))
             resetCycleState()
             _metrics.value = CompressionMetrics()
         }
@@ -291,6 +313,9 @@ class CompressionDetector(context: Context) : SensorEventListener {
 
         // Depth: minDisplacement is negative (meters downward), convert to positive mm
         val depthMm = (abs(minDisplacement) * 1000f).coerceIn(0f, 100f)
+
+        Log.i(TAG, "COMPRESSION #${compressionIdx}  interval=${intervalMs}ms  rate=${rate}bpm  depth=%.1fmm  minDisp=%.4f  gx=%.3f  gy=%.3f  gz=%.3f".format(
+            depthMm, minDisplacement, gravityX, gravityY, gravityZ))
 
         // Recoil: how far displacement came back from the deepest point
         val recoilMm = ((displacement - minDisplacement) * 1000f).coerceIn(0f, 100f)
