@@ -87,7 +87,7 @@ fun CompressionDepthChart(
         if (events.isEmpty()) return@Canvas
 
         val minValue = 0f
-        val maxValue = 80f
+        val maxValue = 200f
         val range = maxValue - minValue
         if (events.size < 2) return@Canvas
 
