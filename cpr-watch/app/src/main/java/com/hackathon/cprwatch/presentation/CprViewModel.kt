@@ -30,6 +30,9 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
     private var sessionActive = false
     private var messagesSent = 0
     private var lastSendError: String? = null
+    private var shallowStreak = 0
+    private var deepStreak = 0
+    private var depthGuidanceFeedback = CompressionFeedback.GOOD
 
     init {
         observeDetector()
@@ -40,11 +43,15 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
         sessionActive = true
         messagesSent = 0
         lastSendError = null
+        shallowStreak = 0
+        deepStreak = 0
+        depthGuidanceFeedback = CompressionFeedback.GOOD
 
         _uiState.value = _uiState.value.copy(
             isActive = true,
             feedbackMessage = "Start compressions",
-            metronomeBeatId = 0L
+            metronomeBeatId = 0L,
+            depthGuidanceFeedback = CompressionFeedback.GOOD
         )
 
         detector.start()
@@ -86,6 +93,7 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
         detector.compressionCompleted
             .onEach { result ->
                 if (!sessionActive) return@onEach
+                updateDepthGuidance(_uiState.value.feedback)
 
                 viewModelScope.launch {
                     try {
@@ -97,7 +105,8 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     _uiState.value = _uiState.value.copy(
                         messagesSent = messagesSent,
-                        sendError = lastSendError
+                        sendError = lastSendError,
+                        depthGuidanceFeedback = depthGuidanceFeedback
                     )
                 }
             }
@@ -169,6 +178,26 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private fun updateDepthGuidance(rawFeedback: CompressionFeedback) {
+        when (rawFeedback) {
+            CompressionFeedback.TOO_SHALLOW -> {
+                shallowStreak++
+                deepStreak = 0
+                if (shallowStreak >= 3) depthGuidanceFeedback = CompressionFeedback.TOO_SHALLOW
+            }
+            CompressionFeedback.TOO_DEEP -> {
+                deepStreak++
+                shallowStreak = 0
+                if (deepStreak >= 3) depthGuidanceFeedback = CompressionFeedback.TOO_DEEP
+            }
+            else -> {
+                shallowStreak = 0
+                deepStreak = 0
+                depthGuidanceFeedback = CompressionFeedback.GOOD
+            }
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
         stopSession()
@@ -190,5 +219,6 @@ data class CprUiState(
     val accelTimestampMs: Long = 0L,
     val messagesSent: Int = 0,
     val sendError: String? = null,
-    val metronomeBeatId: Long = 0L
+    val metronomeBeatId: Long = 0L,
+    val depthGuidanceFeedback: CompressionFeedback = CompressionFeedback.GOOD
 )

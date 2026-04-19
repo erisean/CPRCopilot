@@ -3,8 +3,9 @@ package com.hackathon.cprwatch.presentation
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -85,109 +87,131 @@ private fun IdleScreen(onStart: () -> Unit) {
 
 @Composable
 private fun ActiveScreen(state: CprUiState, onStop: () -> Unit) {
-    val feedbackColor = when (state.feedback) {
-        CompressionFeedback.GOOD -> Color.Green
-        CompressionFeedback.IDLE -> Color.Gray
-        CompressionFeedback.CALIBRATING -> Color.Cyan
-        else -> Color.Yellow
-    }
+    val pace = paceState(state.rate)
+    val roundSafePadding = 14.dp
 
-    Box(contentAlignment = Alignment.Center) {
-        PulseRing(beatId = state.metronomeBeatId, color = feedbackColor)
-
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-            modifier = Modifier.padding(8.dp)
-        ) {
-        // Rate display
-        Text(
-            text = "${state.rate}",
-            fontSize = 40.sp,
-            fontWeight = FontWeight.Bold,
-            color = feedbackColor
-        )
-        Text(
-            text = "BPM",
-            fontSize = 12.sp,
-            color = Color.Gray
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(roundSafePadding)
+    ) {
+        PulseRing(
+            beatId = state.metronomeBeatId,
+            color = pace.color,
+            modifier = Modifier.align(Alignment.Center)
         )
 
-        Spacer(modifier = Modifier.height(4.dp))
-
-        // Depth
-        if (state.depthCm > 0) {
-            Text(
-                text = "%.1f cm".format(state.depthCm),
-                fontSize = 14.sp,
-                color = Color.White
-            )
-        }
-
-        Spacer(modifier = Modifier.height(4.dp))
-
-        // Feedback message
-        Text(
-            text = state.feedbackMessage,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Bold,
-            color = feedbackColor,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Text(
-            text = "Accel (m/s^2)",
-            fontSize = 10.sp,
-            color = Color.Gray
-        )
-        Text(
-            text = "x ${"%.2f".format(state.accelX)}  y ${"%.2f".format(state.accelY)}",
-            fontSize = 10.sp,
-            color = Color.White,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth()
-        )
-        Text(
-            text = "z ${"%.2f".format(state.accelZ)}  |a| ${"%.2f".format(state.accelMagnitude)}",
-            fontSize = 10.sp,
-            color = Color.White,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(modifier = Modifier.height(4.dp))
-
-        Text(
-            text = if (state.sendError != null) "Send err: ${state.sendError}"
-                   else "Sent: ${state.messagesSent}",
-            fontSize = 9.sp,
-            color = if (state.sendError != null) Color.Red else Color(0xFF4CAF50),
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(modifier = Modifier.height(4.dp))
-
-        // Stop button
         Button(
             onClick = onStop,
-            modifier = Modifier.size(36.dp),
-            shape = CircleShape,
-            colors = ButtonDefaults.buttonColors(
-                containerColor = Color.DarkGray
-            )
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(vertical = 4.dp, horizontal = 25.dp)
+                .height(28.dp),
+            shape = RoundedCornerShape(50),
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5A5A5A))
         ) {
-            Text("■", fontSize = 14.sp)
+            Text("End", fontSize = 10.sp, fontWeight = FontWeight.Bold)
         }
+
+        Column(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .padding(horizontal = 4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = pace.label,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = pace.color
+            )
+            Text(
+                text = "${state.rate}",
+                fontSize = 48.sp,
+                fontWeight = FontWeight.Bold,
+                color = pace.color,
+                lineHeight = 48.sp
+            )
+            Text(
+                text = "BPM",
+                fontSize = 11.sp,
+                color = Color.LightGray
+            )
         }
+
+        StatBox(
+           // title = "Depth Guide",
+            value = depthGuide(state.depthGuidanceFeedback),
+            valueColor = depthGuideColor(state.depthGuidanceFeedback),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth(0.9f)
+                .padding(bottom = 2.dp)
+        )
     }
 }
 
 @Composable
-private fun PulseRing(beatId: Long, color: Color) {
+private fun StatBox(
+   // title: String,
+    value: String,
+    valueColor: Color,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .height(44.dp)
+            .background(Color(0xFF1C1C1C), RoundedCornerShape(8.dp))
+            .border(1.dp, Color(0xFF3A3A3A), RoundedCornerShape(8.dp))
+            .padding(horizontal = 4.dp, vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+
+        //Spacer(modifier = Modifier.height(1.dp))
+        Text(
+            text = value,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            color = valueColor,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+private data class PaceState(
+    val label: String,
+    val color: Color
+)
+
+private fun paceState(rate: Int): PaceState {
+    return when {
+        rate > 120 -> PaceState(label = "Too Fast", color = Color.Red)
+        rate in 100..120 -> PaceState(label = "In Zone", color = Color(0xFF4CAF50))
+        else -> PaceState(label = "Too Slow", color = Color(0xFFFFC107))
+    }
+}
+
+private fun depthGuide(feedback: CompressionFeedback): String {
+    return when (feedback) {
+        CompressionFeedback.TOO_SHALLOW -> "Press Harder"
+        CompressionFeedback.TOO_DEEP -> "Press Softer"
+        CompressionFeedback.CALIBRATING -> "Begin compressions"
+        else -> "Depth good"
+    }
+}
+
+private fun depthGuideColor(feedback: CompressionFeedback): Color {
+    return when (feedback) {
+        CompressionFeedback.TOO_SHALLOW, CompressionFeedback.TOO_DEEP -> Color(0xFFFFC107)
+        CompressionFeedback.CALIBRATING -> Color.Cyan
+        else -> Color(0xFF4CAF50)
+    }
+}
+
+@Composable
+private fun PulseRing(beatId: Long, color: Color, modifier: Modifier = Modifier) {
     val progress = remember { Animatable(1f) }
 
     LaunchedEffect(beatId) {
@@ -199,7 +223,7 @@ private fun PulseRing(beatId: Long, color: Color) {
         )
     }
 
-    Canvas(modifier = Modifier.size(170.dp)) {
+    Canvas(modifier = modifier.size(170.dp)) {
         val t = progress.value
         val radius = size.minDimension * (0.22f + 0.34f * t)
         val alpha = (1f - t) * 0.55f
