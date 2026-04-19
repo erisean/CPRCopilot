@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.random.Random
 
@@ -165,7 +166,7 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
                         dutyCycle = 0.5f,
                         peakAccelMps2 = (7f + Random.nextFloat() * 3f),
                         wristAngleDeg = Random.nextFloat() * 10f,
-                        rescuerHrBpm = if (count % 3 == 0) (90 + count / 5).coerceAtMost(160) else null,
+                        rescuerHrBpm = simulatedRescuerHrForDemo(count),
                         isQualityGood = instruction == "none",
                         instruction = instruction,
                         instructionPriority = when (instruction) {
@@ -180,5 +181,18 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
                 delay(intervalMs.toLong())
             }
         }
+    }
+
+    /**
+     * Synthetic rescuer HR for simulation: steep fatigue ramp + strong sine oscillation + jitter so charts
+     * and Claude downstream series look visibly dynamic (not a gentle linear ramp).
+     */
+    private fun simulatedRescuerHrForDemo(count: Int): Int? {
+        if (count % 2 != 0) return null
+        val progress = (count / 85f).coerceIn(0f, 1f)
+        val ramp = 74f + progress * 92f
+        val oscillation = (sin(count / 7.5) * 18f).toFloat()
+        val jitter = Random.nextInt(-7, 8)
+        return (ramp + oscillation + jitter).roundToInt().coerceIn(68, 182)
     }
 }

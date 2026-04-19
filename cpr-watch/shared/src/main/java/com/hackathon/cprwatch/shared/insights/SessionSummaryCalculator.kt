@@ -1,6 +1,7 @@
 package com.hackathon.cprwatch.shared.insights
 
 import com.hackathon.cprwatch.shared.CompressionEvent
+import kotlin.math.ceil
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
@@ -8,6 +9,11 @@ import kotlin.math.sqrt
  * Ports `compute_session_summary` from [data-pipeline/generate_insights.py].
  */
 object SessionSummaryCalculator {
+
+    /** Cap for downsampled performance + HR series sent to Claude (~60–120 range). */
+    private val seriesMaxPoints = 96
+    /** Target bin width ≈ this many seconds (actual width adapts to span and [seriesMaxPoints]). */
+    private val seriesTargetBinSec = 3f
 
     fun fromCompressionEvents(events: List<CompressionEvent>): SessionSummary? {
         if (events.isEmpty()) return null
@@ -53,7 +59,8 @@ object SessionSummaryCalculator {
             100f
         }
 
-        val hrValues = events.mapNotNull { it.rescuerHrBpm }
+        val hrValues = events.mapNotNull { it.rescuerHrBpm?.takeIf { h -> h > 0 } }
+        val rescuerHrSampleCount = hrValues.size
         val rescuerHr = RescuerHrSummary(
             start = hrValues.take(5).averageOrZero().roundToInt(),
             end = hrValues.takeLast(5).averageOrZero().roundToInt(),
@@ -71,8 +78,11 @@ object SessionSummaryCalculator {
             pctTrue(n) { i -> events[i].isQualityGood }
         )
 
+        val performanceHrSeries = buildPerformanceHrSeries(events, durationSec)
+
         return SessionSummary(
             totalCompressions = n,
+            rescuerHrSampleCount = rescuerHrSampleCount,
             durationSec = durationSec,
             rate = rateStats,
             depth = depthStats,
@@ -82,8 +92,55 @@ object SessionSummaryCalculator {
             rescuerHr = rescuerHr,
             timeWindows = timeWindows,
             instructionsIssued = instructionsIssued,
-            pctAllGuidelinesMet = pctAll
+            pctAllGuidelinesMet = pctAll,
+            performanceHrSeries = performanceHrSeries,
         )
+    }
+
+    /**
+     * Uniform time bins (~[seriesTargetBinSec]s spacing when session is long enough), at most [seriesMaxPoints]
+     * rows. Empty bins are omitted. Values are bin means (rolling BPM, depth, recoil); HR is mean where present.
+     */
+    private fun buildPerformanceHrSeries(
+        events: List<CompressionEvent>,
+        spanSec: Float,
+    ): List<PerformanceHrSeriesPoint> {
+        if (events.isEmpty()) return emptyList()
+        val t0 = events.first().timestampMs
+        val span = spanSec.coerceAtLeast(0f)
+        val numBinsTarget = ceil(span.toDouble() / seriesTargetBinSec.toDouble()).toInt().coerceAtLeast(1)
+        val numBins = numBinsTarget.coerceAtMost(seriesMaxPoints)
+        val binSec = if (numBins <= 0) span else span / numBins
+
+        val out = ArrayList<PerformanceHrSeriesPoint>(numBins)
+        for (i in 0 until numBins) {
+            val relStart = i * binSec
+            val relEnd = if (i == numBins - 1) span else (i + 1) * binSec
+            val slice = events.filter {
+                val rel = (it.timestampMs - t0) / 1000f
+                if (i == numBins - 1) rel >= relStart - 1e-4f && rel <= relEnd + 1e-3f
+                else rel >= relStart && rel < relEnd
+            }
+            if (slice.isEmpty()) continue
+
+            val meanRoll = round1(meanFloats(slice.map { it.rollingRateBpm }))
+            val meanDepth = round1(meanFloats(slice.map { it.estimatedDepthMm }))
+            val meanRecoil = round1(meanFloats(slice.map { it.recoilPct }))
+            val hrs = slice.mapNotNull { it.rescuerHrBpm?.takeIf { h -> h > 0 } }
+            val meanHr = if (hrs.isEmpty()) null else (hrs.sum().toDouble() / hrs.size).roundToInt()
+
+            val centerT = round1((relStart + relEnd) / 2f)
+            out.add(
+                PerformanceHrSeriesPoint(
+                    tSec = centerT,
+                    rollingRateBpm = meanRoll,
+                    depthMm = meanDepth,
+                    recoilPct = meanRecoil,
+                    rescuerHrBpm = meanHr,
+                )
+            )
+        }
+        return out
     }
 
     private fun buildPauses(events: List<CompressionEvent>): List<PauseInfo> {
