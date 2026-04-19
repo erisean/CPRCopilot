@@ -167,7 +167,10 @@ fun LiveSessionScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             // Stats grid
-            StatsGrid(events = events, rescuerHr = latestEvent?.rescuerHrBpm)
+            StatsGrid(
+                events = events,
+                rescuerHr = rescuerHrForDisplay(latestEvent, events),
+            )
 
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -277,6 +280,15 @@ private fun HeroBpm(rate: Int, status: RateStatus, compressionCount: Int) {
             }
         }
     }
+}
+
+/** Latest beat’s HR, or most recent prior non-null HR (avoids “--” on sparse samples). */
+private fun rescuerHrForDisplay(latest: CompressionEvent?, events: List<CompressionEvent>): Int? {
+    latest?.rescuerHrBpm?.takeIf { it > 0 }?.let { return it }
+    for (i in events.indices.reversed()) {
+        events[i].rescuerHrBpm?.takeIf { it > 0 }?.let { return it }
+    }
+    return null
 }
 
 @Composable

@@ -165,7 +165,7 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
                         dutyCycle = 0.5f,
                         peakAccelMps2 = (7f + Random.nextFloat() * 3f),
                         wristAngleDeg = Random.nextFloat() * 10f,
-                        rescuerHrBpm = if (count % 10 == 0) (90 + count / 5).coerceAtMost(160) else null,
+                        rescuerHrBpm = if (count % 3 == 0) (90 + count / 5).coerceAtMost(160) else null,
                         isQualityGood = instruction == "none",
                         instruction = instruction,
                         instructionPriority = when (instruction) {
