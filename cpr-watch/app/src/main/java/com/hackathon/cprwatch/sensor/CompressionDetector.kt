@@ -340,7 +340,7 @@ class CompressionDetector(context: Context) : SensorEventListener {
      */
     private fun computeZuptDepthMm(): Float {
         val n = cycleSamples.size
-        if (n < 2) return (abs(minDisplacement) * 1000f).coerceIn(0f, 150f)
+        if (n < 2) return (abs(minDisplacement) * 1000f).coerceIn(0f, 200f)
 
         // Step 1 – build uncorrected velocity array (size n+1, index 0 = start)
         val vel = FloatArray(n + 1)
@@ -366,7 +366,7 @@ class CompressionDetector(context: Context) : SensorEventListener {
             if (disp < minDisp) minDisp = disp
         }
 
-        val depthMm = (abs(minDisp) * 1000f).coerceIn(0f, 150f)
+        val depthMm = (abs(minDisp) * 1000f).coerceIn(0f, 200f)
         Log.d(TAG, "ZUPT  rawMinDisp=%.4f  correctedMinDisp=%.4f  depthMm=%.1f  vDrift=%.4f  samples=$n".format(
             minDisplacement, minDisp, depthMm, vDrift))
         return depthMm
@@ -397,7 +397,7 @@ class CompressionDetector(context: Context) : SensorEventListener {
             depthMm, minDisplacement, gravityX, gravityY, gravityZ))
 
         // Recoil: how far displacement came back from the deepest point (use raw displacement for recoil estimate)
-        val recoilMm = ((displacement - minDisplacement) * 1000f).coerceIn(0f, 150f)
+        val recoilMm = ((displacement - minDisplacement) * 1000f).coerceIn(0f, 200f)
         val recoilPct = if (depthMm > 0) (recoilMm / depthMm * 100f).coerceIn(0f, 100f) else 100f
 
         val dutyCycle = if (intervalMs > 0) {
