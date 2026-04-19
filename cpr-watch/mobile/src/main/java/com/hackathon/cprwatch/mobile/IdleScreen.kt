@@ -45,6 +45,8 @@ private val DimText = Color(0xFF6B6B6B)
 @Composable
 fun IdleScreen(
     pastSessions: List<CprSession>,
+    watchConnected: Boolean,
+    watchName: String?,
     onStartSession: () -> Unit,
     onStartDebug: () -> Unit
 ) {
@@ -87,7 +89,12 @@ fun IdleScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Watch connection status
+            WatchConnectionBanner(connected = watchConnected, watchName = watchName)
+
+            Spacer(modifier = Modifier.height(12.dp))
 
             // Infant mode toggle
             InfantModeToggle()
@@ -267,6 +274,45 @@ private fun StatItem(value: String, label: String) {
             fontSize = 10.sp,
             color = DimText,
             letterSpacing = 0.5.sp
+        )
+    }
+}
+
+@Composable
+private fun WatchConnectionBanner(connected: Boolean, watchName: String?) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(CardBg)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(10.dp)
+                .background(
+                    if (connected) Color(0xFF4CAF50) else Color(0xFFF44336),
+                    CircleShape
+                )
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = if (connected) "Watch connected" else "Watch not connected",
+                color = Color.White,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium
+            )
+            Text(
+                text = if (connected) (watchName ?: "Galaxy Watch") else "Check Bluetooth pairing",
+                color = DimText,
+                fontSize = 12.sp
+            )
+        }
+        Text(
+            text = if (connected) "⌚" else "?",
+            fontSize = 20.sp
         )
     }
 }

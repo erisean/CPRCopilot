@@ -27,6 +27,8 @@ class MainActivity : ComponentActivity(), MessageClient.OnMessageReceivedListene
                 when (state.screen) {
                     ScreenState.IDLE -> IdleScreen(
                         pastSessions = state.pastSessions,
+                        watchConnected = state.watchConnected,
+                        watchName = state.watchName,
                         onStartSession = { viewModel.startSession() },
                         onStartDebug = { viewModel.startSimulation() }
                     )

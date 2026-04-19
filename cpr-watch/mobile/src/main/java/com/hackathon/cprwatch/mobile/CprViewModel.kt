@@ -1,6 +1,7 @@
 package com.hackathon.cprwatch.mobile
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.hackathon.cprwatch.shared.CompressionEvent
 import com.hackathon.cprwatch.shared.CprSession
@@ -25,21 +26,38 @@ data class MobileUiState(
     val pastSessions: List<CprSession> = emptyList(),
     val latestEvent: CompressionEvent? = null,
     val isSimulating: Boolean = false,
-    val isListening: Boolean = false
+    val isListening: Boolean = false,
+    val watchConnected: Boolean = false,
+    val watchName: String? = null
 )
 
-class CprViewModel : ViewModel() {
+class CprViewModel(application: Application) : AndroidViewModel(application) {
 
     private var simulationJob: Job? = null
     private val _completedSession = MutableStateFlow<CprSession?>(null)
+    private val connectionMonitor = WatchConnectionMonitor(application)
+
+    init {
+        viewModelScope.launch {
+            connectionMonitor.startMonitoring()
+        }
+    }
 
     val uiState: StateFlow<MobileUiState> = combine(
         CprRepository.currentSession,
         CprRepository.pastSessions,
         CprRepository.simulating,
         CprRepository.listening,
-        _completedSession
-    ) { current, past, simulating, listening, completed ->
+        _completedSession,
+        connectionMonitor.state
+    ) { values ->
+        val current = values[0] as CprSession?
+        val past = @Suppress("UNCHECKED_CAST") (values[1] as List<CprSession>)
+        val simulating = values[2] as Boolean
+        val listening = values[3] as Boolean
+        val completed = values[4] as CprSession?
+        val connection = values[5] as WatchConnectionState
+
         val screen = when {
             current != null -> ScreenState.LIVE
             completed != null -> ScreenState.SCORECARD
@@ -52,7 +70,9 @@ class CprViewModel : ViewModel() {
             pastSessions = past,
             latestEvent = current?.compressionEvents?.lastOrNull(),
             isSimulating = simulating,
-            isListening = listening
+            isListening = listening,
+            watchConnected = connection.isConnected,
+            watchName = connection.watchName
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), MobileUiState())
 
