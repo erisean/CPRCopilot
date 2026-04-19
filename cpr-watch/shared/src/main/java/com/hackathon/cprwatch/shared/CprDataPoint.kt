@@ -10,6 +10,7 @@ data class CompressionEvent(
     val instantaneousRateBpm: Float,
     val rollingRateBpm: Float,
     val estimatedDepthMm: Float,
+    val recoilMm: Float,
     val recoilPct: Float,
     val dutyCycle: Float,
     val peakAccelMps2: Float,
