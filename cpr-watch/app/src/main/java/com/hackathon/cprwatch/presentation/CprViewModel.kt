@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.hackathon.cprwatch.data.DataSender
 import com.hackathon.cprwatch.haptic.HapticCoach
+import com.hackathon.cprwatch.haptic.VoiceCoach
 import com.hackathon.cprwatch.sensor.CompressionDetector
 import com.hackathon.cprwatch.sensor.CompressionFeedback
 import com.hackathon.cprwatch.sensor.CompressionMetrics
@@ -20,6 +21,7 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
 
     private val detector = CompressionDetector(application)
     private val haptic = HapticCoach(application)
+    private val voice = VoiceCoach(application)
     private val dataSender = DataSender(application)
 
     private val _uiState = MutableStateFlow(CprUiState())
@@ -76,7 +78,7 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
                     feedback = metrics.feedback,
                     feedbackMessage = if (sessionActive) feedbackMessage(metrics) else "Tap to start"
                 )
-
+                if (sessionActive) voice.speak(metrics.feedback)
             }
             .launchIn(viewModelScope)
 
@@ -170,6 +172,7 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
     override fun onCleared() {
         super.onCleared()
         stopSession()
+        voice.shutdown()
     }
 }
 
