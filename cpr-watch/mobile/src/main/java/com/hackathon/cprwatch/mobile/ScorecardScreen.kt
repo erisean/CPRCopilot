@@ -1,11 +1,19 @@
 package com.hackathon.cprwatch.mobile
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,6 +31,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -36,6 +45,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -48,6 +58,8 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.PI
+import kotlin.math.sin
 import com.hackathon.cprwatch.shared.CompressionEvent
 import com.hackathon.cprwatch.shared.CprSession
 import com.hackathon.cprwatch.shared.insights.ScorecardAlignedStats
@@ -113,7 +125,6 @@ fun ScorecardScreen(
     }
 
     val paragraphUnderHero = when {
-        aiLoading -> "Fetching AI summary…"
         aiSummaryText != null -> aiSummaryText!!
         else -> heuristicSummary
     }
@@ -147,25 +158,29 @@ fun ScorecardScreen(
 
             GradeRing(grade = grade, inZonePct = scorecard.inZonePct)
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-            Text(
-                text = "Summary",
-                fontSize = 12.sp,
-                color = DimText,
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = TextAlign.Center
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text = paragraphUnderHero,
-                fontSize = 15.sp,
-                color = Color.White.copy(alpha = if (aiLoading) 0.55f else 0.85f),
-                textAlign = TextAlign.Start,
-                lineHeight = 22.sp,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)
-            )
+            if (aiLoading) {
+                SummaryInsightLoadingCard(modifier = Modifier.fillMaxWidth())
+            } else {
+                SummaryInsightCardShell(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = "Summary",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = GradeGreen,
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = paragraphUnderHero,
+                        fontSize = 15.sp,
+                        color = Color.White.copy(alpha = 0.88f),
+                        textAlign = TextAlign.Start,
+                        lineHeight = 22.sp,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
 
             aiErrorNote?.let { err ->
                 Spacer(modifier = Modifier.height(8.dp))
@@ -173,11 +188,11 @@ fun ScorecardScreen(
                     text = "AI unavailable — showing quick take above. ($err)",
                     fontSize = 11.sp,
                     color = GradeAmber.copy(alpha = 0.9f),
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
                 )
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             MetricsGrid(scorecard)
 
@@ -227,6 +242,169 @@ fun ScorecardScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
         }
+    }
+}
+
+@Composable
+private fun SummaryInsightCardShell(
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Card(
+        modifier = modifier.padding(horizontal = 8.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = CardBg),
+        border = BorderStroke(1.dp, GradeGreen.copy(alpha = 0.42f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            content = content,
+        )
+    }
+}
+
+@Composable
+private fun SummaryInsightLoadingCard(modifier: Modifier = Modifier) {
+    SummaryInsightCardShell(modifier = modifier) {
+        Text(
+            text = "Summary",
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+            color = GradeGreen,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        DecorativeWaveLoadingCanvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(112.dp),
+        )
+        Spacer(modifier = Modifier.height(14.dp))
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(16.dp),
+                color = DimText,
+                strokeWidth = 2.dp,
+            )
+            Text(
+                text = "Reading session data",
+                fontSize = 13.sp,
+                color = DimText,
+            )
+        }
+    }
+}
+
+@Composable
+private fun DecorativeWaveLoadingCanvas(modifier: Modifier = Modifier) {
+    val accent = GradeGreen
+    val transition = rememberInfiniteTransition(label = "summaryWave")
+    val progress by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1350, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "draw",
+    )
+
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val baseline = h * 0.68f
+        val amp = h * 0.26f
+        val seg = 96
+        val pts = Array(seg + 1) { i ->
+            val t = i / seg.toFloat()
+            val yNorm =
+                sin((t * 9.0 * PI)).toFloat() * 0.28f +
+                    sin((t * 19.0 * PI + 1.1)).toFloat() * 0.14f +
+                    sin((t * 5.2 * PI + 0.35)).toFloat() * 0.09f
+            Offset(t * w, baseline + yNorm * amp)
+        }
+
+        val floatIdx = (progress * seg).coerceIn(0f, seg.toFloat())
+        val idxFloor = floatIdx.toInt().coerceIn(0, seg - 1)
+        val frac = floatIdx - idxFloor
+        val tip = if (idxFloor >= seg) {
+            pts[seg]
+        } else {
+            val a = pts[idxFloor]
+            val b = pts[idxFloor + 1]
+            Offset(
+                a.x + (b.x - a.x) * frac,
+                a.y + (b.y - a.y) * frac,
+            )
+        }
+
+        val strokePath = Path().apply {
+            moveTo(pts[0].x, pts[0].y)
+            for (i in 1..idxFloor) {
+                lineTo(pts[i].x, pts[i].y)
+            }
+            if (frac > 0.001f && idxFloor < seg) {
+                lineTo(tip.x, tip.y)
+            }
+        }
+
+        val fillPath = Path().apply {
+            moveTo(0f, baseline)
+            lineTo(pts[0].x, pts[0].y)
+            for (i in 1..idxFloor) {
+                lineTo(pts[i].x, pts[i].y)
+            }
+            if (frac > 0.001f && idxFloor < seg) {
+                lineTo(tip.x, tip.y)
+            }
+            lineTo(tip.x, baseline)
+            close()
+        }
+
+        drawPath(
+            fillPath,
+            brush = Brush.verticalGradient(
+                colors = listOf(
+                    accent.copy(alpha = 0.22f),
+                    accent.copy(alpha = 0.04f),
+                ),
+                startY = 0f,
+                endY = h,
+            ),
+        )
+
+        drawPath(
+            strokePath,
+            color = accent,
+            style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round),
+        )
+
+        val glowR = 14.dp.toPx()
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    accent.copy(alpha = 0.85f),
+                    accent.copy(alpha = 0.35f),
+                    Color.Transparent,
+                ),
+                center = tip,
+                radius = glowR,
+            ),
+            radius = glowR,
+            center = tip,
+        )
+        drawCircle(
+            color = Color.White.copy(alpha = 0.75f),
+            radius = 3.dp.toPx(),
+            center = tip,
+        )
+        drawCircle(
+            color = accent.copy(alpha = 0.95f),
+            radius = 2.dp.toPx(),
+            center = tip,
+        )
     }
 }
 
