@@ -443,6 +443,6 @@ class CompressionDetector(context: Context) : SensorEventListener {
     }
 
     private fun pruneOldTimestamps(currentTimeMs: Long) {
-        compressionTimestamps.removeAll { currentTimeMs - it > 10_000L }
+        compressionTimestamps.removeAll { currentTimeMs - it > 3_000L }
     }
 }

@@ -95,7 +95,7 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
 
         // Send one event per compression to the phone
         detector.compressionCompleted
-            .onEach { raw ->
+            .onEach { result ->
                 if (!sessionActive) return@onEach
                 updateDepthGuidance(_uiState.value.feedback)
 
