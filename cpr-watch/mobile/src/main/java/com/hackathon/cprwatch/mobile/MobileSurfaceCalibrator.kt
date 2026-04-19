@@ -31,19 +31,17 @@ class MobileSurfaceCalibrator(private val calibrationCount: Int = 8) {
 
     private fun computeProfile() {
         val trimmed = samples.sortedBy { it.first }.drop(1).dropLast(1)
-        val avgDepthM = trimmed.map { it.first / 1000f }.average().toFloat()
+        val avgDepthMm = trimmed.map { it.first }.average().toFloat()
         val avgPeakAccel = trimmed.map { it.second }.average().toFloat()
 
-        val stiffness = if (avgDepthM > 0.001f) avgPeakAccel / avgDepthM else 1f
+        val stiffness = if (avgDepthMm > 1f) avgPeakAccel / (avgDepthMm / 1000f) else 1f
 
-        val refAccelMin = 8f
-        val refAccelMax = 12f
-        val targetDepthMin = (refAccelMin / stiffness * 1000f).coerceIn(10f, 300f)
-        val targetDepthMax = (refAccelMax / stiffness * 1000f).coerceIn(15f, 350f)
+        val targetDepthMin = (avgDepthMm * 0.85f).coerceAtLeast(10f)
+        val targetDepthMax = (avgDepthMm * 1.15f).coerceAtLeast(15f)
 
         val label = when {
-            avgDepthM * 1000f < 30f -> "Firm surface"
-            avgDepthM * 1000f < 80f -> "Medium surface"
+            avgDepthMm < 30f -> "Firm surface"
+            avgDepthMm < 80f -> "Medium surface"
             else -> "Soft surface"
         }
 
