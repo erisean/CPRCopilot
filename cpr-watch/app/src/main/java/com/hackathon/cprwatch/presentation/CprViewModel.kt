@@ -8,8 +8,8 @@ import com.hackathon.cprwatch.haptic.HapticCoach
 import com.hackathon.cprwatch.sensor.CompressionDetector
 import com.hackathon.cprwatch.sensor.CompressionFeedback
 import com.hackathon.cprwatch.sensor.CompressionMetrics
+import com.hackathon.cprwatch.sensor.CompressionResult
 import com.hackathon.cprwatch.shared.CompressionEvent
-import com.hackathon.cprwatch.shared.CprDataPoint
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.launchIn
@@ -26,8 +26,6 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
     val uiState: StateFlow<CprUiState> = _uiState
 
     private var sessionActive = false
-    private var compressionIdx = 0
-    private var lastCompressionMs = 0L
     private var messagesSent = 0
     private var lastSendError: String? = null
 
@@ -38,9 +36,8 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
     fun startSession() {
         if (sessionActive) return
         sessionActive = true
-
-        compressionIdx = 0
-        lastCompressionMs = 0L
+        messagesSent = 0
+        lastSendError = null
 
         _uiState.value = _uiState.value.copy(
             isActive = true,
@@ -53,7 +50,6 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             try { dataSender.sendSessionStart() } catch (_: Exception) {}
         }
-
     }
 
     fun stopSession() {
@@ -68,72 +64,20 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun observeDetector() {
+        // Update watch UI from metrics (continuous)
         detector.metrics
             .onEach { metrics ->
-                val message = feedbackMessage(metrics)
-
                 _uiState.value = _uiState.value.copy(
                     isActive = sessionActive,
                     rate = metrics.rate,
                     depthCm = metrics.depthCm,
                     isCompressing = metrics.isCompressing,
                     feedback = metrics.feedback,
-                    feedbackMessage = if (sessionActive) message else "Tap to start"
+                    feedbackMessage = if (sessionActive) feedbackMessage(metrics) else "Tap to start"
                 )
 
-                if (!sessionActive) return@onEach
-
-                if (metrics.isCompressing && metrics.rate > 0) {
-                    val now = System.currentTimeMillis()
-                    compressionIdx++
-                    val intervalMs = if (lastCompressionMs > 0) (now - lastCompressionMs).toInt() else 545
-                    lastCompressionMs = now
-
-                    viewModelScope.launch {
-                        try {
-                            dataSender.sendCompressionEvent(
-                                CompressionEvent(
-                                    compressionIdx = compressionIdx,
-                                    timestampMs = now,
-                                    intervalMs = intervalMs,
-                                    instantaneousRateBpm = if (intervalMs > 0) 60000f / intervalMs else 0f,
-                                    rollingRateBpm = metrics.rate.toFloat(),
-                                    estimatedDepthMm = metrics.depthCm * 10f,
-                                    recoilPct = 100f,
-                                    dutyCycle = 0.5f,
-                                    peakAccelMps2 = 0f,
-                                    wristAngleDeg = 0f,
-                                    rescuerHrBpm = null,
-                                    isQualityGood = metrics.feedback == CompressionFeedback.GOOD,
-                                    instruction = when (metrics.feedback) {
-                                        CompressionFeedback.GOOD -> "none"
-                                        CompressionFeedback.TOO_SLOW -> "faster"
-                                        CompressionFeedback.TOO_FAST -> "slower"
-                                        CompressionFeedback.TOO_SHALLOW -> "push_harder"
-                                        CompressionFeedback.TOO_DEEP -> "ease_up"
-                                        CompressionFeedback.IDLE -> "none"
-                                        CompressionFeedback.CALIBRATING -> "none"
-                                    },
-                                    instructionPriority = when (metrics.feedback) {
-                                        CompressionFeedback.GOOD, CompressionFeedback.CALIBRATING, CompressionFeedback.IDLE -> null
-                                        CompressionFeedback.TOO_SLOW, CompressionFeedback.TOO_FAST -> 2
-                                        CompressionFeedback.TOO_SHALLOW, CompressionFeedback.TOO_DEEP -> 3
-                                    }
-                                )
-                            )
-                            messagesSent++
-                            lastSendError = null
-                        } catch (e: Exception) {
-                            lastSendError = e.message ?: "Send failed"
-                        }
-                        _uiState.value = _uiState.value.copy(
-                            messagesSent = messagesSent,
-                            sendError = lastSendError
-                        )
-                    }
-                }
-
-                if (metrics.feedback != CompressionFeedback.GOOD &&
+                if (sessionActive &&
+                    metrics.feedback != CompressionFeedback.GOOD &&
                     metrics.feedback != CompressionFeedback.IDLE &&
                     metrics.feedback != CompressionFeedback.CALIBRATING &&
                     metrics.isCompressing
@@ -143,6 +87,28 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
             }
             .launchIn(viewModelScope)
 
+        // Send one event per compression to the phone
+        detector.compressionCompleted
+            .onEach { result ->
+                if (!sessionActive) return@onEach
+
+                viewModelScope.launch {
+                    try {
+                        dataSender.sendCompressionEvent(resultToEvent(result))
+                        messagesSent++
+                        lastSendError = null
+                    } catch (e: Exception) {
+                        lastSendError = e.message ?: "Send failed"
+                    }
+                    _uiState.value = _uiState.value.copy(
+                        messagesSent = messagesSent,
+                        sendError = lastSendError
+                    )
+                }
+            }
+            .launchIn(viewModelScope)
+
+        // Live accelerometer for debug display
         detector.liveSample
             .onEach { sample ->
                 _uiState.value = _uiState.value.copy(
@@ -154,6 +120,39 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
             .launchIn(viewModelScope)
+    }
+
+    private fun resultToEvent(result: CompressionResult): CompressionEvent {
+        val feedback = _uiState.value.feedback
+        return CompressionEvent(
+            compressionIdx = result.compressionIdx,
+            timestampMs = result.timestampMs,
+            intervalMs = result.intervalMs,
+            instantaneousRateBpm = if (result.intervalMs > 0) 60000f / result.intervalMs else 0f,
+            rollingRateBpm = result.rate.toFloat(),
+            estimatedDepthMm = result.depthMm,
+            recoilMm = result.recoilMm,
+            recoilPct = result.recoilPct,
+            dutyCycle = result.dutyCycle,
+            peakAccelMps2 = result.peakAccel,
+            wristAngleDeg = 0f,
+            rescuerHrBpm = null,
+            isQualityGood = feedback == CompressionFeedback.GOOD,
+            instruction = when (feedback) {
+                CompressionFeedback.GOOD -> "none"
+                CompressionFeedback.TOO_SLOW -> "faster"
+                CompressionFeedback.TOO_FAST -> "slower"
+                CompressionFeedback.TOO_SHALLOW -> "push_harder"
+                CompressionFeedback.TOO_DEEP -> "ease_up"
+                CompressionFeedback.IDLE -> "none"
+                CompressionFeedback.CALIBRATING -> "none"
+            },
+            instructionPriority = when (feedback) {
+                CompressionFeedback.GOOD, CompressionFeedback.CALIBRATING, CompressionFeedback.IDLE -> null
+                CompressionFeedback.TOO_SLOW, CompressionFeedback.TOO_FAST -> 2
+                CompressionFeedback.TOO_SHALLOW, CompressionFeedback.TOO_DEEP -> 3
+            }
+        )
     }
 
     private fun feedbackMessage(metrics: CompressionMetrics): String {

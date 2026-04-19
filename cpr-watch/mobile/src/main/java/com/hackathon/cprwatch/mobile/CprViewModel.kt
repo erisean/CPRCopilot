@@ -133,6 +133,7 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
                         instantaneousRateBpm = 60000f / intervalMs,
                         rollingRateBpm = rate.toFloat(),
                         estimatedDepthMm = depthMm,
+                        recoilMm = depthMm * recoilPct / 100f,
                         recoilPct = recoilPct,
                         dutyCycle = 0.5f,
                         peakAccelMps2 = (7f + Random.nextFloat() * 3f),
