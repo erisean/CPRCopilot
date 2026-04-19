@@ -1,91 +1,54 @@
 package com.hackathon.cprwatch.shared.insights
 
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
+import java.util.Locale
 
 /**
- * Same user prompt shape as [data-pipeline/generate_insights.py] `build_user_prompt`.
+ * Compact user message for Claude (mobile recap): headline scorecard + condensed diagnostics so the model
+ * does not mirror giant tables into the reply.
  */
-fun SessionSummary.buildUserPromptForClaude(): String {
-    val pauseLines = if (pauses.isEmpty()) {
-        "  - No pauses detected"
-    } else {
-        pauses.joinToString("\n") { p ->
-            "  - At ${p.atTimeSec}s: ${p.durationSec}s pause"
-        }
-    }
-
-    val windowsJson = formatTimeWindowsJson(timeWindows)
-
-    val instructionsJson = if (instructionsIssued.isEmpty()) {
-        "None — all metrics stayed in range"
-    } else {
-        Json {
-            prettyPrint = true
-            prettyPrintIndent = "  "
-        }.encodeToString(
-            buildJsonObject {
-                instructionsIssued.forEach { (k, v) -> put(k, JsonPrimitive(v)) }
-            }
-        )
-    }
-
+fun SessionSummary.buildClaudeUserPrompt(scorecard: ScorecardAlignedStats): String {
+    val fmt1 = { v: Double -> String.format(Locale.US, "%.1f", v) }
+    val fmt0 = { v: Double -> String.format(Locale.US, "%.0f", v) }
+    val pctStreak =
+        String.format(Locale.US, "%.0f", scorecard.longestStreakFractionOfSession * 100f)
+    val rateStd = String.format(Locale.US, "%.1f", scorecard.rollingRateStdBpm)
     return """
-Analyze this CPR session and provide performance insights.
+**Reply style (mandatory):** **≤5 sentences**, ideally **3–4**; aim **≤50 words**. Plain prose—**no lists**, no stat dump. Sound like a quick hallway debrief. **Optional:** weave in **at most one short clause each** for what to **start**, **continue**, and **stop** doing—only when something below clearly supports it; otherwise skip.
 
-## Session Data
+Session metrics:
 
-**Duration:** ${durationSec}s | **Total compressions:** $totalCompressions | **Overall quality:** $pctAllGuidelinesMet% met all guidelines
+For **rate performance**, prioritize time-in-zone, wall-time split, streak, and rolling BPM consistency (std dev)—mean rolling BPM alone is **not** a quality score.
 
-### Compression Rate
-- Mean: ${rate.mean} BPM (std: ${rate.std})
-- Range: ${rate.min} – ${rate.max} BPM
-- In guideline (100-120): ${rate.pctInGuideline}%
+## Scorecard
 
-### Compression Depth
-- Mean: ${depth.meanMm} mm (std: ${depth.stdMm})
-- Range: ${depth.minMm} – ${depth.maxMm} mm
-- In guideline (50-60mm): ${depth.pctInGuideline}%
+- Grade: ${scorecard.gradeLetter} (${scorecard.gradeLabel})
+- Duration ${ScorecardAlignedStats.formatMmSs(scorecard.sessionDurationSec)} (${scorecard.sessionDurationSec}s wall) · ${scorecard.totalCompressions} compressions
+- In-zone % (100–120 rolling): ${scorecard.inZonePct}% · Rolling BPM σ: ${rateStd} BPM · Too fast/slow mix: ${scorecard.tooFastPct}% / ${scorecard.tooSlowPct}%
+- Wall-time (approx.): in-zone ${scorecard.approxWallTimeInZoneSec}s · fast ${scorecard.approxWallTimeTooFastSec}s · slow ${scorecard.approxWallTimeTooSlowSec}s
+- Best in-zone streak: ${scorecard.longestInZoneStreakSec}s (${pctStreak}% of span)
+- Mean rolling BPM (context only): ${scorecard.avgRateBpm}
 
-### Recoil
-- Mean: ${recoil.meanPct}%
-- Full recoil (>=95%): ${recoil.pctFullRecoil}%
+Depth/recoil averages: depth ${fmt1(scorecard.avgDepthMm)} mm · recoil ${fmt0(scorecard.avgRecoilPct)}%
 
-### CPR Fraction
-- $cprFractionPct%
-- Pauses: ${pauses.size} detected
-$pauseLines
-
-### Rescuer Heart Rate
-- Start: ${rescuerHr.start} BPM
-- End: ${rescuerHr.end} BPM
-- Peak: ${rescuerHr.peak} BPM
-
-### Performance Over Time (30-second windows)
-$windowsJson
-
-### Real-time Instructions Issued During Session
-$instructionsJson
+${formatDiagnosticsCompact()}
 """.trimIndent()
 }
 
-private fun formatTimeWindowsJson(windows: List<TimeWindowBucket>): String {
-    if (windows.isEmpty()) return "[]"
-    val blocks = windows.map { w ->
-        val hr = w.meanRescuerHr?.toString() ?: "null"
-        """
-  {
-    "window": "${w.windowLabel}",
-    "compressions": ${w.compressions},
-    "mean_rate_bpm": ${w.meanRateBpm},
-    "mean_depth_mm": ${w.meanDepthMm},
-    "mean_recoil_pct": ${w.meanRecoilPct},
-    "pct_quality_good": ${w.pctQualityGood},
-    "mean_rescuer_hr": $hr
-  }""".trimIndent()
-    }
-    return "[\n${blocks.joinToString(",\n")}\n]"
+private fun SessionSummary.formatDiagnosticsCompact(): String {
+    val instruct = instructionsIssued.entries.joinToString(", ") { "${it.key}×${it.value}" }
+        .ifEmpty { "none" }
+    val windowsBrief = timeWindows.take(12).joinToString(" · ") { w ->
+        "${w.windowLabel}: r≈${w.meanRateBpm.toInt()} d≈${fmt0(w.meanDepthMm)}mm rc≈${fmt0(w.meanRecoilPct)}% ok≈${w.pctQualityGood.toInt()}%"
+    }.ifEmpty { "n/a" }
+    return """
+## Diagnostics (supporting detail only—do not transcribe into your reply)
+
+All-guidelines-met ${pctAllGuidelinesMet}% · CPR fraction ${cprFractionPct}% · Pauses ${pauses.size} · Instant rate in-band ${rate.pctInGuideline}% · Depth in-band ${depth.pctInGuideline}% · Full recoil ≥95% on ${recoil.pctFullRecoil}% · HR ${rescuerHr.start}→${rescuerHr.end} (peak ${rescuerHr.peak})
+
+Instructions counted: $instruct
+
+30s windows: $windowsBrief
+""".trimIndent()
 }
+
+private fun fmt0(v: Float): String = String.format(Locale.US, "%.0f", v.toDouble())

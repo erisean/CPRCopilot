@@ -17,13 +17,12 @@ import kotlinx.coroutines.launch
 import kotlin.math.sin
 import kotlin.random.Random
 
-enum class ScreenState { IDLE, LIVE, SCORECARD, AI_COACH }
+enum class ScreenState { IDLE, LIVE, SCORECARD }
 
 data class MobileUiState(
     val screen: ScreenState = ScreenState.IDLE,
     val currentSession: CprSession? = null,
     val completedSession: CprSession? = null,
-    val coachInsightsSession: CprSession? = null,
     val pastSessions: List<CprSession> = emptyList(),
     val latestEvent: CompressionEvent? = null,
     val isSimulating: Boolean = false,
@@ -36,7 +35,6 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
 
     private var simulationJob: Job? = null
     private val _completedSession = MutableStateFlow<CprSession?>(null)
-    private val _coachInsightsSession = MutableStateFlow<CprSession?>(null)
     private val connectionMonitor = WatchConnectionMonitor(application)
 
     init {
@@ -47,23 +45,17 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
 
     val uiState: StateFlow<MobileUiState> = combine(
         combine(
-            combine(
-                CprRepository.currentSession,
-                CprRepository.pastSessions,
-                CprRepository.simulating,
-                CprRepository.listening,
-                _completedSession,
-            ) { current, past, simulating, listening, completed ->
-                SessionPack(current, past, simulating, listening, completed)
-            },
-            _coachInsightsSession,
-        ) { pack, coachSession -> pack to coachSession },
+            CprRepository.currentSession,
+            CprRepository.pastSessions,
+            CprRepository.simulating,
+            CprRepository.listening,
+            _completedSession,
+        ) { current, past, simulating, listening, completed ->
+            SessionPack(current, past, simulating, listening, completed)
+        },
         connectionMonitor.state,
-    ) { packAndCoach, connection ->
-        val pack = packAndCoach.first
-        val coachSession = packAndCoach.second
+    ) { pack, connection ->
         val screen = when {
-            coachSession != null -> ScreenState.AI_COACH
             pack.current != null -> ScreenState.LIVE
             pack.completed != null -> ScreenState.SCORECARD
             else -> ScreenState.IDLE
@@ -72,7 +64,6 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
             screen = screen,
             currentSession = pack.current,
             completedSession = pack.completed,
-            coachInsightsSession = coachSession,
             pastSessions = pack.past,
             latestEvent = pack.current?.compressionEvents?.lastOrNull(),
             isSimulating = pack.simulating,
@@ -92,13 +83,11 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
 
     fun startSession() {
         _completedSession.value = null
-        _coachInsightsSession.value = null
         CprRepository.startListening()
         CprRepository.startSession()
     }
 
     fun stopSession() {
-        _coachInsightsSession.value = null
         _completedSession.value = CprRepository.currentSession.value
         CprRepository.endSession()
         CprRepository.stopListening()
@@ -108,23 +97,12 @@ class CprViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun dismissScorecard() {
-        _coachInsightsSession.value = null
         _completedSession.value = null
-    }
-
-    fun dismissCoachInsights() {
-        _coachInsightsSession.value = null
-    }
-
-    /** Opens coach screen for any [CprSession] (e.g. latest from idle history). */
-    fun presentCoachInsights(session: CprSession) {
-        _coachInsightsSession.value = session
     }
 
     fun startSimulation() {
         if (simulationJob?.isActive == true) return
         _completedSession.value = null
-        _coachInsightsSession.value = null
         CprRepository.setSimulating(true)
         CprRepository.startListening()
         CprRepository.startSession()

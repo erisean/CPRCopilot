@@ -30,12 +30,7 @@ class MainActivity : ComponentActivity(), MessageClient.OnMessageReceivedListene
                         watchConnected = state.watchConnected,
                         watchName = state.watchName,
                         onStartSession = { viewModel.startSession() },
-                        onStartDebug = { viewModel.startSimulation() },
-                        onOpenCoachInsights = {
-                            state.pastSessions.lastOrNull()?.let { session ->
-                                viewModel.presentCoachInsights(session)
-                            }
-                        }
+                        onStartDebug = { viewModel.startSimulation() }
                     )
                     ScreenState.LIVE -> LiveSessionScreen(
                         session = state.currentSession,
@@ -45,10 +40,6 @@ class MainActivity : ComponentActivity(), MessageClient.OnMessageReceivedListene
                     ScreenState.SCORECARD -> ScorecardScreen(
                         session = state.completedSession,
                         onDismiss = { viewModel.dismissScorecard() }
-                    )
-                    ScreenState.AI_COACH -> CoachInsightsScreen(
-                        session = state.coachInsightsSession,
-                        onDismiss = { viewModel.dismissCoachInsights() }
                     )
                 }
             }

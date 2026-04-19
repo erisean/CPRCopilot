@@ -52,7 +52,6 @@ fun IdleScreen(
     watchName: String?,
     onStartSession: () -> Unit,
     onStartDebug: () -> Unit,
-    onOpenCoachInsights: () -> Unit = {},
 ) {
     val greeting = remember {
         when (Calendar.getInstance().get(Calendar.HOUR_OF_DAY)) {
@@ -155,33 +154,17 @@ fun IdleScreen(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "debug mode",
-                    fontSize = 13.sp,
-                    color = Color(0xFF4CAF50),
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable { onStartDebug() }
-                        .padding(horizontal = 10.dp, vertical = 8.dp)
-                )
-                Text(text = " · ", fontSize = 13.sp, color = DimText)
-                val coachEnabled = pastSessions.isNotEmpty()
-                Text(
-                    text = if (coachEnabled) "coach (Claude)" else "coach (Claude) — needs session",
-                    fontSize = 13.sp,
-                    color = if (coachEnabled) Color(0xFFC9A227) else DimText,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable(enabled = coachEnabled) { onOpenCoachInsights() }
-                        .padding(horizontal = 10.dp, vertical = 8.dp)
-                )
-            }
+            Text(
+                text = "debug mode",
+                fontSize = 13.sp,
+                color = Color(0xFF4CAF50),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { onStartDebug() }
+                    .padding(vertical = 8.dp),
+                textAlign = TextAlign.Center
+            )
 
             Spacer(modifier = Modifier.height(12.dp))
 

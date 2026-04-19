@@ -46,3 +46,6 @@ data class SessionInsights(
     val insights: List<InsightItem>,
     val topPriority: String
 )
+
+/** Claude returns only this for the mobile coach — one narrative, no insight cards. */
+data class AiSessionSummary(val summary: String)
